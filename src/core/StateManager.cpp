@@ -3747,10 +3747,21 @@ void DuelState::render(sf::RenderTarget& target) {
     shaken.move(m_vfx.getShakeOffset() + m_endScreen.shakeOffset());
     target.setView(shaken);
 
-    if (ResourceManager::exists("assets/ui/battlefield_bg.png")) {
-        const sf::Texture& field = ResourceManager::get().getTexture("assets/ui/battlefield_bg.png");
+    // Two stems, because a dropped-in file is as likely to be called one as the
+    // other, and exists() only substitutes the EXTENSION - a .jpg named
+    // battlefield_background sat in assets/ui doing nothing because the code
+    // asked for battlefield_bg. Extension substitution then covers .png/.jpg.
+    const char* fieldNames[] = { "assets/ui/battlefield_bg.png",
+                                 "assets/ui/battlefield_background.png" };
+    const char* field = nullptr;
+    for (const char* name : fieldNames) {
+        if (ResourceManager::exists(name)) { field = name; break; }
+    }
+
+    if (field) {
+        const sf::Texture& tex = ResourceManager::get().getTexture(field);
         sf::Sprite sprite;
-        coverScreen(sprite, field);
+        coverScreen(sprite, tex);
         target.draw(sprite);
     } else {
         sf::RectangleShape bg({ 1280.0f, 720.0f });
