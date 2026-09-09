@@ -1,0 +1,13 @@
+{
+  "cmake.cmakePath": "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+  "cmake.defaultBuildType": "Release",
+  "cmake.configureSettings": {
+    "SFML_DIR": "C:/Users/danhc/Documents/GitHub/Tower_Defense_HCMUS_GROUP7_24C11/lib/cmake/SFML"
+  },
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/src",
+    "${workspaceFolder}/include",
+    "C:/Users/danhc/Documents/GitHub/Tower_Defense_HCMUS_GROUP7_24C11/include"
+  ]
+}

@@ -1,0 +1,1236 @@
+{
+  "_comment": "Sanctum: Mecha-Chivalry card catalogue. Balance lives here - edit and rerun SanctumDuelSim.exe. Behaviour lives in DuelEngine.cpp.",
+  "_roles": "Vanguard | Paladin | Valkyrie | Dragoon | Siege | Inquisitor",
+  "_keywords": "taunt, rush, ranged, reactive, overkill, plasma, emp, aerial, splash, thruster",
+  "_tiers": "1 = deploy freely | 2 = 1 tribute saves 2 energy | 3 = 2 tributes save 4 energy",
+  "cards": [
+    {
+      "id": "vg_bastion",
+      "name": "Bastion-01 Guard Drone",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 1,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "reactive"
+      ],
+      "description": "Reactive plating: takes 1 less damage from every hit.",
+      "textureFile": "assets/cards/vg_bastion.jpg"
+    },
+    {
+      "id": "vg_pike",
+      "name": "Rampart Pike MK-II",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 2,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "taunt"
+      ],
+      "description": "Guard: screens the frames beside it.",
+      "textureFile": "assets/cards/vg_pike.jpg"
+    },
+    {
+      "id": "vg_galahad",
+      "name": "Galahad-IV Heavy Knight",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 3,
+      "health": 7,
+      "deckCount": 3,
+      "keywords": [
+        "taunt",
+        "reactive"
+      ],
+      "description": "Guard: screens the frames beside it. Reactive plating.\nThe line does not move.",
+      "textureFile": "assets/cards/vg_galahad.jpg"
+    },
+    {
+      "id": "vg_behemoth",
+      "name": "Behemoth-Prime Fortress",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 3,
+      "manaCost": 8,
+      "attack": 6,
+      "health": 11,
+      "deckCount": 1,
+      "keywords": [
+        "taunt",
+        "reactive"
+      ],
+      "abilities": [
+        {
+          "trigger": "OnDamaged",
+          "kind": "ReflectToRow",
+          "value": 2
+        }
+      ],
+      "description": "Guard: screens the frames beside it. Reactive plating.\nEach time hit, 2 arc damage to the enemy frontline.",
+      "textureFile": "assets/cards/vg_behemoth.jpg"
+    },
+    {
+      "id": "vg_bulwark",
+      "name": "Bulwark Protocol",
+      "role": "Vanguard",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 2,
+      "deckCount": 2,
+      "spell": "ArmourAllAllies",
+      "spellValue": 2,
+      "description": "Every friendly frame gains 2 absorption plating.",
+      "textureFile": "assets/cards/vg_bulwark.jpg"
+    },
+    {
+      "id": "vg_reactive",
+      "name": "Reactive Armor Protocol",
+      "role": "Vanguard",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 2,
+      "trapTrigger": "OnEnemyAttackReactor",
+      "trapKind": "BlockAndCrushWeak",
+      "trapValue": 3,
+      "description": "COUNTER - when an enemy strikes your reactor:\nblock it, and scrap the attacker if it has 3 or less health.",
+      "textureFile": "assets/cards/vg_reactive.jpg"
+    },
+    {
+      "id": "pl_scout",
+      "name": "Arclance Scout",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 3,
+      "health": 2,
+      "deckCount": 3,
+      "keywords": [
+        "plasma"
+      ],
+      "description": "Plasma edge: burns straight through absorption plating.",
+      "textureFile": "assets/cards/pl_scout.jpg"
+    },
+    {
+      "id": "pl_lumen",
+      "name": "Lumen Cadet",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 2,
+      "health": 4,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "GainOvercharge",
+          "value": 2
+        }
+      ],
+      "description": "Deploy: charge the core by 2.",
+      "textureFile": "assets/cards/pl_lumen.jpg"
+    },
+    {
+      "id": "pl_judicator",
+      "name": "Judicator Citadel Knight",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 5,
+      "health": 5,
+      "deckCount": 3,
+      "keywords": [
+        "splash",
+        "plasma"
+      ],
+      "description": "Plasma. Splash: its sweep also hits the frames flanking the target.",
+      "textureFile": "assets/cards/pl_judicator.jpg"
+    },
+    {
+      "id": "pl_solaris",
+      "name": "Solaris, Grand Lightlord",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 3,
+      "manaCost": 8,
+      "attack": 9,
+      "health": 9,
+      "deckCount": 1,
+      "keywords": [
+        "plasma"
+      ],
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "DumpOverchargeOnDeploy"
+        }
+      ],
+      "description": "Deploy: vent the entire core.\nDamage equal to your overcharge, split across every enemy frame.",
+      "textureFile": "assets/cards/pl_solaris.jpg"
+    },
+    {
+      "id": "pl_overcharge",
+      "name": "Reactor Overcharge",
+      "role": "Paladin",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 2,
+      "deckCount": 3,
+      "spell": "OverchargeSurge",
+      "spellValue": 3,
+      "description": "Gain 3 overcharge.",
+      "textureFile": "assets/cards/pl_overcharge.jpg"
+    },
+    {
+      "id": "pl_smite",
+      "name": "Orbital Strike",
+      "role": "Paladin",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 4,
+      "deckCount": 2,
+      "spell": "DamageEnemyFrontline",
+      "spellValue": 3,
+      "description": "3 plasma damage to every enemy frontline frame.",
+      "textureFile": "assets/cards/pl_smite.jpg"
+    },
+    {
+      "id": "vk_medic",
+      "name": "Nanite-V Field Medic",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 1,
+      "attack": 1,
+      "health": 3,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnTurnEnd",
+          "kind": "RepairWoundedAlly",
+          "value": 2
+        }
+      ],
+      "description": "End of turn: repair 2 on your most damaged frame.",
+      "textureFile": "assets/cards/vk_medic.jpg"
+    },
+    {
+      "id": "vk_salvager",
+      "name": "Salvage Rig",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 2,
+      "health": 4,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnTurnStart",
+          "kind": "DrawCards",
+          "value": 1
+        }
+      ],
+      "description": "Upkeep: pull a card from the salvage line.",
+      "textureFile": "assets/cards/vk_salvager.jpg"
+    },
+    {
+      "id": "vk_freyja",
+      "name": "Freyja, Silver Wing",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 3,
+      "health": 5,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "Aura",
+          "kind": "SpawnScrapDroneOnAllyLoss",
+          "value": 1
+        }
+      ],
+      "description": "When a friendly frame is destroyed, a 1/1 scrap drone takes its place.",
+      "textureFile": "assets/cards/vk_freyja.jpg"
+    },
+    {
+      "id": "vk_arkangel",
+      "name": "Ark-Nine Rebirth Carrier",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 3,
+      "manaCost": 8,
+      "attack": 5,
+      "health": 10,
+      "deckCount": 1,
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "ReviveBestFromScrap"
+        }
+      ],
+      "description": "Deploy: rebuild the strongest wreck in your scrap yard.",
+      "textureFile": "assets/cards/vk_arkangel.jpg"
+    },
+    {
+      "id": "vk_scrap",
+      "name": "Scrap Protocol",
+      "role": "Valkyrie",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "DrawThenRepairIfLosses",
+      "spellValue": 2,
+      "spellValue2": 4,
+      "description": "Draw 2. If you lost a frame this turn, repair 4 on your reactor.",
+      "textureFile": "assets/cards/vk_scrap.jpg"
+    },
+    {
+      "id": "dg_raptor",
+      "name": "Raptor Jet Lancer",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 4,
+      "health": 2,
+      "deckCount": 3,
+      "keywords": [
+        "rush",
+        "thruster"
+      ],
+      "description": "Blitz: attacks the turn it deploys.\nThrusters: advancing costs nothing.",
+      "textureFile": "assets/cards/dg_raptor.jpg"
+    },
+    {
+      "id": "dg_outrider",
+      "name": "Outrider Skiff",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 2,
+      "health": 2,
+      "deckCount": 3,
+      "keywords": [
+        "thruster"
+      ],
+      "description": "Thrusters: advancing costs nothing.",
+      "textureFile": "assets/cards/dg_outrider.jpg"
+    },
+    {
+      "id": "dg_zephyr",
+      "name": "Zephyr Skyblade",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 5,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "aerial",
+        "thruster"
+      ],
+      "description": "Aerial: flies the line and strikes the enemy support row directly.",
+      "textureFile": "assets/cards/dg_zephyr.jpg"
+    },
+    {
+      "id": "dg_zero",
+      "name": "Dragoon-Zero",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 3,
+      "manaCost": 8,
+      "attack": 8,
+      "health": 6,
+      "deckCount": 1,
+      "keywords": [
+        "rush",
+        "aerial"
+      ],
+      "abilities": [
+        {
+          "trigger": "None",
+          "kind": "ExtraAttackPerTurn",
+          "value": 1
+        },
+        {
+          "trigger": "OnKill",
+          "kind": "RetreatAfterKill"
+        }
+      ],
+      "description": "Blitz. Aerial. Strikes twice each turn.\nAfter a kill it falls back to the support row.",
+      "textureFile": "assets/cards/dg_zero.jpg"
+    },
+    {
+      "id": "dg_evasion",
+      "name": "Thruster Evasion",
+      "role": "Dragoon",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "trapTrigger": "OnAllyTargetedByRemoval",
+      "trapKind": "RecallTargetToHand",
+      "description": "COUNTER - when a spell targets one of your frames:\ncancel it and return the frame to your hand.",
+      "textureFile": "assets/cards/dg_evasion.jpg"
+    },
+    {
+      "id": "sg_mortar",
+      "name": "Mortar-03 Walker",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 1,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "ranged"
+      ],
+      "description": "Ranged: fires from any row at any lane, and can shell the reactor for half damage.",
+      "textureFile": "assets/cards/sg_mortar.jpg"
+    },
+    {
+      "id": "sg_spotter",
+      "name": "Spotter Array",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 1,
+      "health": 3,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "Aura",
+          "kind": "AuraRangedBonus",
+          "value": 1
+        }
+      ],
+      "description": "Your ranged frames hit for 1 more.",
+      "textureFile": "assets/cards/sg_spotter.jpg"
+    },
+    {
+      "id": "sg_ballista",
+      "name": "Ballista Energy Knight",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 3,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "ranged",
+        "overkill"
+      ],
+      "description": "Ranged: may shell the reactor for half damage.\nOverkill: damage beyond the target carries into the reactor.",
+      "textureFile": "assets/cards/sg_ballista.jpg"
+    },
+    {
+      "id": "sg_leviathan",
+      "name": "Leviathan Cannon Platform",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 3,
+      "manaCost": 10,
+      "attack": 6,
+      "health": 10,
+      "deckCount": 1,
+      "keywords": [
+        "ranged"
+      ],
+      "abilities": [
+        {
+          "trigger": "OnTurnEnd",
+          "kind": "DamageEnemyBackline",
+          "value": 4
+        }
+      ],
+      "description": "Ranged: may shell the reactor for half damage.\nEnd of turn: 4 damage split across the enemy support row.",
+      "textureFile": "assets/cards/sg_leviathan.jpg"
+    },
+    {
+      "id": "sg_orbital",
+      "name": "Orbital Bombardment",
+      "role": "Siege",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 4,
+      "deckCount": 2,
+      "spell": "WipeLowHealthUnits",
+      "spellValue": 2,
+      "description": "Scrap every frame on the board with 2 or less health.",
+      "textureFile": "assets/cards/sg_orbital.jpg"
+    },
+    {
+      "id": "iq_cipher",
+      "name": "Cipher Mobile Hacker",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 2,
+      "health": 3,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "RevealEnemyTrap"
+        }
+      ],
+      "description": "Deploy: reveal one of the enemy's set cards.",
+      "textureFile": "assets/cards/iq_cipher.jpg"
+    },
+    {
+      "id": "iq_jammer",
+      "name": "Static Jammer",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 3,
+      "health": 5,
+      "deckCount": 3,
+      "keywords": [
+        "emp"
+      ],
+      "description": "EMP: anything it hits is shorted out for a turn.",
+      "textureFile": "assets/cards/iq_jammer.jpg"
+    },
+    {
+      "id": "iq_centurion",
+      "name": "EMP-Centurion",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 4,
+      "health": 5,
+      "deckCount": 3,
+      "keywords": [
+        "emp",
+        "reactive"
+      ],
+      "description": "EMP. Reactive plating. Gains +1 attack for each\ncounter-protocol you have armed.",
+      "textureFile": "assets/cards/iq_centurion.jpg",
+      "abilities": [
+        {
+          "trigger": "Aura",
+          "kind": "BuffPerArmedCounter",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "iq_deusex",
+      "name": "Deus Ex-Machina Core",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 3,
+      "manaCost": 8,
+      "attack": 6,
+      "health": 9,
+      "deckCount": 1,
+      "abilities": [
+        {
+          "trigger": "Aura",
+          "kind": "SeizeUnitOnTrapFlip"
+        }
+      ],
+      "description": "Every time one of your counter-protocols fires,\nseize an enemy frame from their frontline.",
+      "textureFile": "assets/cards/iq_deusex.jpg"
+    },
+    {
+      "id": "iq_firewall",
+      "name": "Firewall Blackout",
+      "role": "Inquisitor",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "trapTrigger": "OnEnemySpellCast",
+      "trapKind": "NegateSpellAndBurn",
+      "description": "COUNTER - when the enemy plays a spell:\ncancel it and burn their reactor for its energy cost.",
+      "textureFile": "assets/cards/iq_firewall.jpg"
+    },
+    {
+      "id": "iq_overload",
+      "name": "Overload Virus",
+      "role": "Inquisitor",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "trapTrigger": "OnEnemyHighTierDeploy",
+      "trapKind": "OverloadSummon",
+      "description": "COUNTER - when the enemy deploys a Tier 2 or 3 frame:\nit takes damage equal to half its own attack.",
+      "textureFile": "assets/cards/iq_overload.jpg"
+    },
+    {
+      "id": "iq_snare",
+      "name": "Grid Snare",
+      "role": "Inquisitor",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 2,
+      "trapTrigger": "OnEnemyAdvance",
+      "trapKind": "WeakenAdvancingUnit",
+      "trapValue": 2,
+      "trapValue2": 2,
+      "description": "COUNTER - when an enemy frame advances:\nit permanently loses 2 attack and 2 health.",
+      "textureFile": "assets/cards/iq_snare.jpg"
+    },
+    {
+      "id": "vg_lastline",
+      "name": "Last Line Detonation",
+      "role": "Vanguard",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 2,
+      "trapTrigger": "OnOwnTitanDestroyed",
+      "trapKind": "DetonateForTitanAttack",
+      "description": "COUNTER - when your titan is destroyed:\nits attack detonates across every enemy frame.",
+      "textureFile": "assets/cards/vg_lastline.jpg"
+    },
+    {
+      "id": "vg_shieldwall",
+      "name": "Shieldwall Drone",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 1,
+      "attack": 1,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "taunt"
+      ],
+      "description": "Guard: screens the frames beside it. Cheap, welded shut, and in the way.",
+      "textureFile": "assets/cards/vg_shieldwall.jpg"
+    },
+    {
+      "id": "vg_anvil",
+      "name": "Anvil Escort",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 2,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "reactive"
+      ],
+      "description": "Reactive plating.",
+      "textureFile": "assets/cards/vg_anvil.jpg"
+    },
+    {
+      "id": "vg_castellan",
+      "name": "Castellan MK-III",
+      "role": "Vanguard",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 2,
+      "health": 6,
+      "deckCount": 3,
+      "keywords": [
+        "taunt"
+      ],
+      "description": "Guard: screens the frames beside it, and absorbs a whole turn of fire.",
+      "textureFile": "assets/cards/vg_castellan.jpg"
+    },
+    {
+      "id": "vg_holdline",
+      "name": "Hold The Line",
+      "role": "Vanguard",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "spell": "ArmourAllAllies",
+      "spellValue": 1,
+      "description": "Every friendly frame gains 1 absorption plating.",
+      "textureFile": "assets/cards/vg_holdline.jpg"
+    },
+    {
+      "id": "vg_ablative",
+      "name": "Ablative Plating",
+      "role": "Vanguard",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 4,
+      "deckCount": 3,
+      "spell": "ArmourAllAllies",
+      "spellValue": 2,
+      "description": "Every friendly frame gains 2 absorption plating.",
+      "textureFile": "assets/cards/vg_ablative.jpg"
+    },
+    {
+      "id": "pl_squire",
+      "name": "Radiant Squire",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 2,
+      "health": 3,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "GainOvercharge",
+          "value": 1
+        }
+      ],
+      "description": "Deploy: charge the core by 1.",
+      "textureFile": "assets/cards/pl_squire.jpg"
+    },
+    {
+      "id": "pl_censer",
+      "name": "Cinder Drone",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 3,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "plasma"
+      ],
+      "description": "Plasma edge.",
+      "textureFile": "assets/cards/pl_censer.jpg"
+    },
+    {
+      "id": "pl_vindicator",
+      "name": "Vindicator Frame",
+      "role": "Paladin",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 5,
+      "health": 5,
+      "deckCount": 3,
+      "keywords": [
+        "plasma"
+      ],
+      "description": "Plasma edge.",
+      "textureFile": "assets/cards/pl_vindicator.jpg"
+    },
+    {
+      "id": "pl_conduit",
+      "name": "Core Conduit",
+      "role": "Paladin",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "spell": "OverchargeSurge",
+      "spellValue": 2,
+      "description": "Gain 2 overcharge.",
+      "textureFile": "assets/cards/pl_conduit.jpg"
+    },
+    {
+      "id": "pl_flare",
+      "name": "Plasma Flare",
+      "role": "Paladin",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "DamageEnemyFrontline",
+      "spellValue": 2,
+      "description": "2 plasma damage to every enemy frontline frame.",
+      "textureFile": "assets/cards/pl_flare.jpg"
+    },
+    {
+      "id": "vk_wrench",
+      "name": "Wrench Drone",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 1,
+      "attack": 1,
+      "health": 2,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnTurnEnd",
+          "kind": "RepairWoundedAlly",
+          "value": 1
+        }
+      ],
+      "description": "End of turn: repair 1 on your most damaged frame.",
+      "textureFile": "assets/cards/vk_wrench.jpg"
+    },
+    {
+      "id": "vk_shieldmaid",
+      "name": "Shieldmaiden Frame",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 3,
+      "health": 3,
+      "deckCount": 3,
+      "description": "Standard issue. Reliable.",
+      "textureFile": "assets/cards/vk_shieldmaid.jpg"
+    },
+    {
+      "id": "vk_valkyr",
+      "name": "Valkyr Lancer",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 4,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "rush"
+      ],
+      "description": "Blitz: attacks the turn it deploys.",
+      "textureFile": "assets/cards/vk_valkyr.jpg"
+    },
+    {
+      "id": "vk_hoist",
+      "name": "Salvage Hoist",
+      "role": "Valkyrie",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 3,
+      "health": 6,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "DrawCards",
+          "value": 1
+        }
+      ],
+      "description": "Deploy: draw a card.",
+      "textureFile": "assets/cards/vk_hoist.jpg"
+    },
+    {
+      "id": "vk_beacon",
+      "name": "Recovery Beacon",
+      "role": "Valkyrie",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 2,
+      "deckCount": 3,
+      "spell": "DrawThenRepairIfLosses",
+      "spellValue": 1,
+      "spellValue2": 3,
+      "description": "Draw 1. If you lost a frame this turn, repair 3 on your reactor.",
+      "textureFile": "assets/cards/vk_beacon.jpg"
+    },
+    {
+      "id": "vk_wash",
+      "name": "Nanite Wash",
+      "role": "Valkyrie",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "ArmourAllAllies",
+      "spellValue": 2,
+      "description": "Every friendly frame gains 2 absorption plating.",
+      "textureFile": "assets/cards/vk_wash.jpg"
+    },
+    {
+      "id": "dg_scoutbike",
+      "name": "Scout Bike",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 1,
+      "attack": 1,
+      "health": 1,
+      "deckCount": 3,
+      "keywords": [
+        "rush",
+        "thruster"
+      ],
+      "description": "Blitz. Thrusters.",
+      "textureFile": "assets/cards/dg_scoutbike.jpg"
+    },
+    {
+      "id": "dg_lancer",
+      "name": "Jet Lancer",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 4,
+      "attack": 3,
+      "health": 3,
+      "deckCount": 3,
+      "keywords": [
+        "thruster"
+      ],
+      "description": "Thrusters: advancing costs nothing.",
+      "textureFile": "assets/cards/dg_lancer.jpg"
+    },
+    {
+      "id": "dg_stormrider",
+      "name": "Stormrider",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 4,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "aerial"
+      ],
+      "description": "Aerial: strikes the enemy support row directly.",
+      "textureFile": "assets/cards/dg_stormrider.jpg"
+    },
+    {
+      "id": "dg_afterburn",
+      "name": "Afterburn Strike",
+      "role": "Dragoon",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 4,
+      "deckCount": 2,
+      "spell": "DestroyHighAttackEnemy",
+      "spellValue": 5,
+      "description": "Scrap one enemy frame with 5 or more attack.",
+      "textureFile": "assets/cards/dg_afterburn.jpg"
+    },
+    {
+      "id": "dg_veer",
+      "name": "Veer Off",
+      "role": "Dragoon",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "trapTrigger": "OnEnemyAdvance",
+      "trapKind": "WeakenAdvancingUnit",
+      "trapValue": 1,
+      "trapValue2": 1,
+      "description": "COUNTER - when an enemy frame advances:\nit permanently loses 1 attack and 1 health.",
+      "textureFile": "assets/cards/dg_veer.jpg"
+    },
+    {
+      "id": "dg_wrecker",
+      "name": "Wrecker Drone",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 2,
+      "attack": 2,
+      "health": 1,
+      "deckCount": 3,
+      "keywords": [
+        "rush",
+        "thruster"
+      ],
+      "abilities": [
+        {
+          "trigger": "OnDestroyed",
+          "kind": "DamageKiller",
+          "value": 3
+        }
+      ],
+      "description": "Blitz. When it is scrapped it\ndetonates into whatever killed it.",
+      "textureFile": "assets/cards/dg_wrecker.jpg"
+    },
+    {
+      "id": "dg_ace",
+      "name": "Ashfall Ace",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 3,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "aerial"
+      ],
+      "abilities": [
+        {
+          "trigger": "OnKill",
+          "kind": "GainStatsOnKill",
+          "value": 1,
+          "value2": 1
+        }
+      ],
+      "description": "Aerial. Every kill leaves it\n+1 attack and repairs 1.",
+      "textureFile": "assets/cards/dg_ace.jpg"
+    },
+    {
+      "id": "dg_wing",
+      "name": "Wing Commander",
+      "role": "Dragoon",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 2,
+      "health": 5,
+      "deckCount": 2,
+      "abilities": [
+        {
+          "trigger": "Aura",
+          "kind": "AuraBuffFrontline",
+          "value": 1,
+          "value2": 0
+        }
+      ],
+      "description": "Every other frame in your\nfrontline hits for 1 more.",
+      "textureFile": "assets/cards/dg_wing.jpg"
+    },
+    {
+      "id": "dg_strafe",
+      "name": "Strafing Run",
+      "role": "Dragoon",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "DamageEnemyFrontline",
+      "spellValue": 2,
+      "description": "2 damage to every enemy frontline frame.",
+      "textureFile": "assets/cards/dg_strafe.jpg"
+    },
+    {
+      "id": "dg_scramble",
+      "name": "Scramble Order",
+      "role": "Dragoon",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 2,
+      "deckCount": 3,
+      "spell": "DrawThenRepairIfLosses",
+      "spellValue": 1,
+      "spellValue2": 2,
+      "description": "Draw 1. If you lost a frame this turn,\nrepair 2 on your reactor.",
+      "textureFile": "assets/cards/dg_scramble.jpg"
+    },
+    {
+      "id": "sg_crew",
+      "name": "Loader Crew",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 1,
+      "attack": 1,
+      "health": 2,
+      "deckCount": 3,
+      "description": "Someone has to feed the guns.",
+      "textureFile": "assets/cards/sg_crew.jpg"
+    },
+    {
+      "id": "sg_flak",
+      "name": "Flak Turret",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 3,
+      "attack": 1,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "ranged",
+        "splash"
+      ],
+      "description": "Ranged, and may shell the reactor for half damage.\nSplash: the burst also hits the flanking frames.",
+      "textureFile": "assets/cards/sg_flak.jpg"
+    },
+    {
+      "id": "sg_howitzer",
+      "name": "Howitzer Frame",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 4,
+      "attack": 2,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "ranged"
+      ],
+      "description": "Ranged: may shell the reactor for half damage.",
+      "textureFile": "assets/cards/sg_howitzer.jpg"
+    },
+    {
+      "id": "sg_battery",
+      "name": "Battery Array",
+      "role": "Siege",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 5,
+      "attack": 3,
+      "health": 5,
+      "deckCount": 3,
+      "keywords": [
+        "ranged"
+      ],
+      "description": "Ranged: may shell the reactor for half damage.",
+      "textureFile": "assets/cards/sg_battery.jpg"
+    },
+    {
+      "id": "sg_barrage",
+      "name": "Suppressing Barrage",
+      "role": "Siege",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "DamageEnemyFrontline",
+      "spellValue": 2,
+      "description": "2 damage to every enemy frontline frame.",
+      "textureFile": "assets/cards/sg_barrage.jpg"
+    },
+    {
+      "id": "sg_entrench",
+      "name": "Entrenchment",
+      "role": "Siege",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 2,
+      "deckCount": 3,
+      "spell": "ArmourAllAllies",
+      "spellValue": 2,
+      "description": "Every friendly frame gains 2 absorption plating.",
+      "textureFile": "assets/cards/sg_entrench.jpg"
+    },
+    {
+      "id": "iq_probe",
+      "name": "Recon Probe",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 1,
+      "attack": 2,
+      "health": 2,
+      "deckCount": 3,
+      "abilities": [
+        {
+          "trigger": "OnDeploy",
+          "kind": "DrawCards",
+          "value": 1
+        }
+      ],
+      "description": "Deploy: draw a card.",
+      "textureFile": "assets/cards/iq_probe.jpg"
+    },
+    {
+      "id": "iq_surge",
+      "name": "Surge Lance",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 1,
+      "manaCost": 4,
+      "attack": 4,
+      "health": 4,
+      "deckCount": 3,
+      "keywords": [
+        "emp"
+      ],
+      "description": "EMP: anything it hits is shorted out for a turn.",
+      "textureFile": "assets/cards/iq_surge.jpg"
+    },
+    {
+      "id": "iq_warden",
+      "name": "Grid Warden",
+      "role": "Inquisitor",
+      "category": "Unit",
+      "tier": 2,
+      "manaCost": 4,
+      "attack": 4,
+      "health": 5,
+      "deckCount": 3,
+      "keywords": [
+        "emp"
+      ],
+      "description": "EMP. Gains +1 attack for each counter-protocol\nyou have armed.",
+      "textureFile": "assets/cards/iq_warden.jpg",
+      "abilities": [
+        {
+          "trigger": "Aura",
+          "kind": "BuffPerArmedCounter",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "iq_purge",
+      "name": "Data Purge",
+      "role": "Inquisitor",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 2,
+      "spell": "DestroyHighAttackEnemy",
+      "spellValue": 5,
+      "description": "Scrap one enemy frame with 5 or more attack.",
+      "textureFile": "assets/cards/iq_purge.jpg"
+    },
+    {
+      "id": "iq_blackice",
+      "name": "Black Ice",
+      "role": "Inquisitor",
+      "category": "Trap",
+      "tier": 1,
+      "manaCost": 1,
+      "deckCount": 3,
+      "trapTrigger": "OnEnemyAttackReactor",
+      "trapKind": "BlockAndCrushWeak",
+      "trapValue": 2,
+      "description": "COUNTER - when an enemy strikes your reactor:\nblock it, and scrap the attacker if it has 2 or less health.",
+      "textureFile": "assets/cards/iq_blackice.jpg"
+    },
+    {
+      "id": "iq_trace",
+      "name": "Signal Trace",
+      "role": "Inquisitor",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "DrawThenRepairIfLosses",
+      "spellValue": 2,
+      "spellValue2": 3,
+      "description": "Draw 2. If you lost a frame this turn,\nrepair 3 on your reactor.",
+      "textureFile": "assets/cards/iq_trace.jpg"
+    },
+    {
+      "id": "iq_blackout",
+      "name": "Grid Blackout",
+      "role": "Inquisitor",
+      "category": "Spell",
+      "tier": 1,
+      "manaCost": 3,
+      "deckCount": 3,
+      "spell": "DamageEnemyFrontline",
+      "spellValue": 2,
+      "description": "2 damage to every enemy frontline frame.",
+      "textureFile": "assets/cards/iq_blackout.jpg"
+    }
+  ]
+}
