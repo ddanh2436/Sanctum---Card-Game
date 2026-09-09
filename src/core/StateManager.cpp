@@ -3325,15 +3325,67 @@ void DuelState::renderRow(sf::RenderTarget& target, Side side, BoardLine line) {
 }
 
 void DuelState::renderFrontLine(sf::RenderTarget& target) {
-    // One thin dashed rule where the two frontlines meet.
+    // Where the two frontlines meet.
+    //
+    // This was a row of hard red dashes, 13x3 at alpha 190. Against the current
+    // battlefield art - a cool silver-blue moon mandala on near-black - it was
+    // the only warm thing on screen and it sawed straight through the centre of
+    // the illustration. Two things changed: the colour now belongs to the same
+    // palette as the art, and the alpha is shaped so the rule has no hard stop
+    // at either end and thins out over the middle, letting the moon read whole.
     const float y = Layout::kFrontLineY;
-    const float x0 = 200.0f;
-    const float x1 = 1080.0f;
-    for (float x = x0; x < x1; x += 22.0f) {
-        sf::RectangleShape dash({ 13.0f, 3.0f });
-        dash.setPosition(x, y);
-        dash.setFillColor(sf::Color(168, 44, 40, 190));
-        target.draw(dash);
+    const float x0 = 190.0f;
+    const float x1 = 1090.0f;
+    const float mid = (x0 + x1) / 2.0f;
+    const float half = (x1 - x0) / 2.0f;
+
+    // Sampled from the artwork's own line-work rather than picked by eye.
+    const sf::Color ink(150, 172, 205);
+
+    auto alphaAt = [&](float x) {
+        // Fade to nothing at both ends: a rule that simply stops looks cut off.
+        const float toEdge = 1.0f - std::min(1.0f, std::abs(x - mid) / half);
+        const float ends = std::min(1.0f, toEdge * 3.2f);
+        // ...and thin over the brightest part of the mandala. Narrow and shallow
+        // on purpose: the lanes are centred here too (they span 374..906), so a
+        // wide, deep notch would fade the rule out exactly where the two
+        // frontlines actually meet. It eases over the moon's core, no further.
+        const float d = (x - mid) / 96.0f;
+        const float notch = 1.0f - 0.42f * std::exp(-d * d);
+        return ends * notch;
+    };
+
+    // Two passes: a soft wide bloom under a one-pixel core, which is how the
+    // hairlines in the background art read.
+    const struct { float thickness; float scale; } passes[] = {
+        { 3.0f, 0.20f },
+        { 1.0f, 0.85f },
+    };
+
+    for (const auto& pass : passes) {
+        sf::VertexArray strip(sf::TriangleStrip);
+        for (float x = x0; x <= x1; x += 10.0f) {
+            const sf::Uint8 a =
+                static_cast<sf::Uint8>(std::clamp(alphaAt(x) * pass.scale, 0.0f, 1.0f) * 255.0f);
+            const sf::Color c(ink.r, ink.g, ink.b, a);
+            strip.append(sf::Vertex({ x, y - pass.thickness / 2.0f }, c));
+            strip.append(sf::Vertex({ x, y + pass.thickness / 2.0f }, c));
+        }
+        target.draw(strip);
+    }
+
+    // Ticks on the lane boundaries. The dashes used to imply the divisions by
+    // accident; marking the real ones says the same thing and says it correctly.
+    for (int i = 0; i <= Board::kLineSlots; ++i) {
+        const float x = Layout::kRowX + i * (Layout::kUnitW + Layout::kUnitGap)
+                      - (i == Board::kLineSlots ? Layout::kUnitGap : 0.0f);
+        const sf::Uint8 a = static_cast<sf::Uint8>(
+            std::clamp(alphaAt(x) * 0.75f, 0.0f, 1.0f) * 255.0f);
+        sf::RectangleShape tick({ 1.0f, 9.0f });
+        tick.setOrigin(0.5f, 4.5f);
+        tick.setPosition(x, y);
+        tick.setFillColor(sf::Color(ink.r, ink.g, ink.b, a));
+        target.draw(tick);
     }
 }
 
