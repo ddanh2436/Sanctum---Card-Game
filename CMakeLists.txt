@@ -71,6 +71,7 @@ set(SANCTUM_CORE_SOURCES
     src/rendering/CardArt.cpp
     src/rendering/CardSpotlight.cpp
     src/rendering/CombatVFX.cpp
+    src/rendering/MenuBackdrop.cpp
     src/rendering/EndScreen.cpp
     src/rendering/PortraitRig.cpp
     src/rendering/FloatingText.cpp
@@ -90,6 +91,7 @@ set(SANCTUM_CORE_HEADERS
     src/rendering/CardArt.hpp
     src/rendering/CardSpotlight.hpp
     src/rendering/CombatVFX.hpp
+    src/rendering/MenuBackdrop.hpp
     src/rendering/EndScreen.hpp
     src/rendering/PortraitRig.hpp
     src/rendering/FloatingText.hpp

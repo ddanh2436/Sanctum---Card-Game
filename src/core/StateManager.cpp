@@ -4,6 +4,7 @@
 #include "rendering/CardArt.hpp"
 #include "rendering/CardSpotlight.hpp"
 #include "rendering/CombatVFX.hpp"
+#include "rendering/MenuBackdrop.hpp"
 #include "rendering/EndScreen.hpp"
 #include "rendering/PortraitRig.hpp"
 #include "rendering/FloatingText.hpp"
@@ -814,8 +815,7 @@ private:
     StateManager& m_stateManager;
     const sf::Font& m_font;
 
-    sf::Sprite m_background;
-    bool m_hasBackground = false;
+    MenuBackdrop m_backdrop;
     sf::VertexArray m_scrim;
 
     sf::Text m_titleText;
@@ -1625,11 +1625,7 @@ public:
 
 MenuState::MenuState(StateManager& sm, const sf::Font& font)
     : m_stateManager(sm), m_font(font) {
-    const sf::Texture& bg = ResourceManager::get().getTexture("assets/ui/menu_bg.png");
-    if (bg.getSize().x > 1) {
-        coverScreen(m_background, bg);
-        m_hasBackground = true;
-    }
+    m_backdrop.load();
 
     // Three columns, not two. A single ramp from the edge was already half
     // faded by the time it reached the text at x 320, and the tagline sat on
@@ -1779,6 +1775,9 @@ void MenuState::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
         m_startButton.setHovered(m_startButton.contains(p));
         m_settingsButton.setHovered(m_settingsButton.contains(p));
         m_quitButton.setHovered(m_quitButton.contains(p));
+        // Already mapped through the view: a raw pixel position would drift the
+        // parallax the wrong way once the window is letterboxed.
+        m_backdrop.setCursor(p);
         m_avatarHovered = -1;
         for (std::size_t i = 0; i < m_avatarSlots.size(); ++i) {
             if (m_avatarSlots[i].contains(p)) m_avatarHovered = static_cast<int>(i);
@@ -1814,6 +1813,7 @@ void MenuState::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
 
 void MenuState::update(float dt) {
     m_time += dt;
+    m_backdrop.update(dt);
     const float pulse = 0.5f + 0.5f * std::sin(m_time * 1.35f);
     // Breathes between cool white and a faint crimson wash, picking up the red
     // in the artwork instead of the gold the old dark background wanted.
@@ -1823,8 +1823,8 @@ void MenuState::update(float dt) {
 }
 
 void MenuState::render(sf::RenderTarget& target) {
-    if (m_hasBackground) {
-        target.draw(m_background);
+    if (m_backdrop.hasArt()) {
+        m_backdrop.render(target);
     } else {
         sf::RectangleShape fallback({ 1280.0f, 720.0f });
         fallback.setFillColor(sf::Color(15, 12, 22));
