@@ -54,9 +54,12 @@ private:
         sf::Color colour;
     };
 
-    // Design-space margin the art is oversized by, so a parallax drift never
-    // pulls an edge into frame.
-    static constexpr float kBleed = 26.0f;
+    // Design-space margin the art is oversized by, so motion never pulls an
+    // edge into frame. Two values because the two modes move by very different
+    // amounts: the layered one drifts and breathes, the flat one only has the
+    // shader's sub-pixel displacement to hide.
+    static constexpr float kBleedLayered = 26.0f;
+    static constexpr float kBleedFlat = 6.0f;
     static constexpr int kEmberCount = 34;
 
     const sf::Texture* m_flat = nullptr;
@@ -72,7 +75,7 @@ private:
     sf::Vector2f m_smoothed;  // eased toward m_cursor
 
     void resetEmber(Ember& ember, bool anywhere);
-    /// Cover 1280x720 plus kBleed on every side, scaled about the centre.
+    /// Cover 1280x720 plus `bleed` on every side, scaled about the centre.
     void placeCover(sf::Sprite& sprite, const sf::Texture& texture,
-                    sf::Vector2f offset, float extraScale) const;
+                    sf::Vector2f offset, float extraScale, float bleed) const;
 };

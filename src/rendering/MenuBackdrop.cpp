@@ -88,7 +88,7 @@ void MenuBackdrop::update(float dt) {
 }
 
 void MenuBackdrop::placeCover(sf::Sprite& sprite, const sf::Texture& texture,
-                              sf::Vector2f offset, float extraScale) const {
+                              sf::Vector2f offset, float extraScale, float bleed) const {
     const float tw = static_cast<float>(texture.getSize().x);
     const float th = static_cast<float>(texture.getSize().y);
     if (tw < 1.0f || th < 1.0f) return;
@@ -97,8 +97,8 @@ void MenuBackdrop::placeCover(sf::Sprite& sprite, const sf::Texture& texture,
     // here on purpose: cropping the rect would leave the shader's texture
     // coordinates spanning the whole source image rather than the visible part,
     // and the wind ripple would key off the wrong x.
-    const float scale = std::max((kDesignW + kBleed * 2.0f) / tw,
-                                 (kDesignH + kBleed * 2.0f) / th) * extraScale;
+    const float scale = std::max((kDesignW + bleed * 2.0f) / tw,
+                                 (kDesignH + bleed * 2.0f) / th) * extraScale;
     sprite.setTexture(texture, true);
     sprite.setOrigin(tw / 2.0f, th / 2.0f);
     sprite.setScale(scale, scale);
@@ -119,22 +119,33 @@ void MenuBackdrop::render(sf::RenderTarget& target) {
     sf::Sprite sprite;
     if (layered()) {
         // Two planes at different rates is what actually reads as depth. The
-        // sky barely moves; the character moves several times as far.
-        placeCover(sprite, *m_sky, { m_smoothed.x * -4.0f, m_smoothed.y * -3.0f }, 1.0f);
+        // sky barely moves; the character moves several times as far. Both the
+        // drift and the breathing are safe here because each acts on its own
+        // plane - the moon does not lurch when the figure leans.
+        placeCover(sprite, *m_sky, { m_smoothed.x * -4.0f, m_smoothed.y * -3.0f },
+                   1.0f, kBleedLayered);
         target.draw(sprite, wind);
 
         placeCover(sprite, *m_character,
                    { m_smoothed.x * -11.0f, m_smoothed.y * -7.0f + breathe * 2.0f },
-                   1.0f + breathe * 0.006f);
+                   1.0f + breathe * 0.006f, kBleedLayered);
         target.draw(sprite, wind);
     } else if (m_flat) {
-        // One plane cannot have parallax, so it gets a drift instead: the whole
-        // painting leans away from the cursor. Less convincing than two layers,
-        // but honest motion rather than a still frame, and the wind ripple does
-        // the rest of the work on the hair and ribbons.
-        placeCover(sprite, *m_flat,
-                   { m_smoothed.x * -7.0f, m_smoothed.y * -5.0f + breathe * 1.5f },
-                   1.0f + breathe * 0.004f);
+        // Drawn dead still, on purpose.
+        //
+        // With one layer there is nothing to move RELATIVE to anything else: a
+        // parallax drift slides the moon, the skyline and the figure together,
+        // and a breathing scale swells all three at once. That is not depth, it
+        // is the whole picture sliding, and it looks like it. The first version
+        // did exactly that and the painting visibly wandered.
+        //
+        // So the flat path transforms nothing and leaves every pixel where the
+        // artist put it. The shader is the only thing that moves, and it is
+        // confined to the hair and the ribbons; the embers are separate objects
+        // drifting over the top. Both come back the moment the two cut layers
+        // appear, because then they have separate planes to act on.
+        (void)breathe;
+        placeCover(sprite, *m_flat, { 0.0f, 0.0f }, 1.0f, kBleedFlat);
         target.draw(sprite, wind);
     }
 
