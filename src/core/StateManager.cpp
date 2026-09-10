@@ -17,6 +17,7 @@
 #include "utils/AudioManager.hpp"
 #include "utils/Avatars.hpp"
 #include "utils/DataLoader.hpp"
+#include "utils/Fonts.hpp"
 #include "utils/ResourceManager.hpp"
 #include "utils/Settings.hpp"
 #include "utils/Rng.hpp"
@@ -240,11 +241,23 @@ void drawPanel(sf::RenderTarget& target, sf::FloatRect bounds, sf::Color fill, s
     target.draw(panel);
 }
 
-void drawLabel(sf::RenderTarget& target, const sf::Font& font, const std::string& text,
+/**
+ * Small caps-and-spacing text: row captions, pile names, hints, readouts.
+ *
+ * It takes no font any more. Every one of these is between 8 and 13 pixels
+ * tall, and at that size the display serif was the least readable thing on the
+ * screen - so they all go through the UI face, and the choice is made here once
+ * instead of at fifty call sites.
+ */
+void drawLabel(sf::RenderTarget& target, const std::string& text,
                sf::Vector2f pos, unsigned int size, sf::Color colour,
                float letterSpacing = 1.0f, bool bold = false) {
     sf::Text label;
-    label.setFont(font);
+    label.setFont(Fonts::ui());
+    // Tracking has to come off as the text gets smaller, not go on. These were
+    // set at 2.0 to 2.6 across the board, which at 8px pulls the letters far
+    // enough apart that the word stops reading as a word.
+    if (size <= 10) letterSpacing = 1.0f + (letterSpacing - 1.0f) * 0.45f;
     label.setString(text);
     label.setCharacterSize(size);
     label.setLetterSpacing(letterSpacing);
@@ -802,7 +815,7 @@ public:
             // Whose game this is, small, under the title.
             const float byIn = window(m_time, kSlamAt + 0.35f, kSlamAt + 0.90f);
             if (byIn > 0.01f) {
-                drawLabel(target, m_font, "A GAME BY DAO DUY ANH", { 640.0f, 250.0f }, 13,
+                drawLabel(target, "A GAME BY DAO DUY ANH", { 640.0f, 250.0f }, 13,
                           sf::Color(214, 202, 178, static_cast<sf::Uint8>(byIn * 255.0f)),
                           4.5f, true);
             }
@@ -820,7 +833,7 @@ public:
             target.draw(foot);
 
             const float blink = 0.55f + 0.45f * std::sin((m_time - kScriptEnd) * 4.4f);
-            drawLabel(target, m_font, "[ PRESS SPACE TO COMMENCE ]", { 640.0f, 664.0f }, 16,
+            drawLabel(target, "[ PRESS SPACE TO COMMENCE ]", { 640.0f, 664.0f }, 16,
                       sf::Color(244, 230, 202, static_cast<sf::Uint8>(clamp01(blink) * 255.0f)),
                       3.4f, true);
         }
@@ -1405,12 +1418,12 @@ void SettingsState::render(sf::RenderTarget& target) {
         const UiSlider& slider = m_sliders[i];
         const bool active = (static_cast<int>(i) == m_hoveredSlider) || slider.dragging;
 
-        drawLabel(target, m_font, slider.label,
+        drawLabel(target, slider.label,
                   { slider.track.left, slider.track.top - 26.0f }, 15,
                   active ? sf::Color(240, 232, 214) : sf::Color(196, 190, 180));
 
         sf::Text readout;
-        readout.setFont(m_font);
+        readout.setFont(Fonts::ui());
         readout.setString(slider.readout());
         readout.setCharacterSize(14);
         readout.setFillColor(sf::Color(214, 180, 116));
@@ -1460,11 +1473,11 @@ void SettingsState::render(sf::RenderTarget& target) {
         dot.setFillColor(on ? sf::Color(247, 224, 168) : sf::Color(128, 120, 134));
         target.draw(dot);
 
-        drawLabel(target, m_font, toggle.label,
+        drawLabel(target, toggle.label,
                   { toggle.box.left + toggle.box.width + 18.0f, toggle.box.top + 4.0f }, 15,
                   active ? sf::Color(240, 232, 214) : sf::Color(196, 190, 180));
 
-        drawLabel(target, m_font, on ? "ON" : "OFF",
+        drawLabel(target, on ? "ON" : "OFF",
                   { kPanelX + kPanelW - 74.0f, toggle.box.top + 5.0f }, 13,
                   on ? sf::Color(214, 180, 116) : sf::Color(120, 114, 126), 2.0f);
     }
@@ -1472,7 +1485,7 @@ void SettingsState::render(sf::RenderTarget& target) {
     m_defaultsButton.render(target);
     m_backButton.render(target);
 
-    drawLabel(target, m_font, "F11 toggles fullscreen anywhere  -  Esc closes this panel",
+    drawLabel(target, "F11 toggles fullscreen anywhere  -  Esc closes this panel",
               { kPanelX + 34.0f, kPanelY + kPanelH - 102.0f }, 12, sf::Color(126, 120, 132));
 }
 
@@ -1579,7 +1592,7 @@ public:
             number.setPosition(sx, stripY - 2.0f);
             target.draw(number);
 
-            drawLabel(target, m_font, stat.label, { sx - 30.0f, stripY + 34.0f }, 11,
+            drawLabel(target, stat.label, { sx - 30.0f, stripY + 34.0f }, 11,
                       sf::Color(stat.ink.r, stat.ink.g, stat.ink.b, 210), 2.0f);
             sx += pitch;
         }
@@ -1590,7 +1603,7 @@ public:
             float h = 0.0f;
             for (const CardArt::GlossaryEntry& entry : list) {
                 sf::Text probe;
-                probe.setFont(m_font);
+                probe.setFont(Fonts::ui());
                 probe.setCharacterSize(14);
                 probe.setLineSpacing(1.28f);
                 probe.setString(TextUtils::wrap(entry.text, m_font, 14, 464.0f));
@@ -1612,7 +1625,7 @@ public:
                            const std::vector<CardArt::GlossaryEntry>& list) {
             if (list.empty()) return;
 
-            drawLabel(target, m_font, heading, { panel.left + 26.0f, y }, 12,
+            drawLabel(target, heading, { panel.left + 26.0f, y }, 12,
                       headingInk, 3.0f);
             y += 24.0f;
 
@@ -1637,7 +1650,7 @@ public:
                 y += 26.0f;
 
                 sf::Text body;
-                body.setFont(m_font);
+                body.setFont(Fonts::ui());
                 body.setCharacterSize(14);
                 body.setLineSpacing(1.28f);
                 body.setFillColor(sf::Color(196, 190, 182));
@@ -1660,12 +1673,12 @@ public:
                 sf::Color(240, 214, 150), m_glossary);
 
         if (m_glossary.empty() && m_statuses.empty()) {
-            drawLabel(target, m_font, "A plain card with no special rules.",
+            drawLabel(target, "A plain card with no special rules.",
                       { panel.left + 26.0f, panel.top + 66.0f }, 15, sf::Color(160, 154, 148));
         }
 
         m_closeButton.render(target);
-        drawLabel(target, m_font, "click anywhere to close",
+        drawLabel(target, "click anywhere to close",
                   { 940.0f, 664.0f }, 12, sf::Color(126, 120, 114));
     }
 };
@@ -1772,12 +1785,12 @@ void MenuState::layoutAvatars() {
 }
 
 void MenuState::renderAvatars(sf::RenderTarget& target) const {
-    drawLabel(target, m_font, "COMMANDER PORTRAIT", { kColumnX - 160.0f, 578.0f }, 11,
+    drawLabel(target, "COMMANDER PORTRAIT", { kColumnX - 160.0f, 578.0f }, 11,
               sf::Color(158, 150, 138), 3.0f);
 
     const auto& pool = Avatars::pool();
     if (pool.empty()) {
-        drawLabel(target, m_font, "Drop images into assets/avatars/ to choose a face",
+        drawLabel(target, "Drop images into assets/avatars/ to choose a face",
                   { kColumnX - 160.0f, 602.0f }, 12, sf::Color(112, 106, 112));
         return;
     }
@@ -1806,7 +1819,7 @@ void MenuState::renderAvatars(sf::RenderTarget& target) const {
             target.draw(ring);
         }
         if (hot) {
-            drawLabel(target, m_font, Avatars::label(pool[i]),
+            drawLabel(target, Avatars::label(pool[i]),
                       { box.left - 4.0f, box.top - 16.0f }, 10,
                       sf::Color(236, 214, 178), 1.2f);
         }
@@ -1814,7 +1827,7 @@ void MenuState::renderAvatars(sf::RenderTarget& target) const {
 
     // Under the thumbnails but clear of the footer hint at y=686. The first
     // version put this at 686 exactly and the two lines printed over each other.
-    drawLabel(target, m_font,
+    drawLabel(target,
               picked.empty() ? "following your primary core" : "click again to follow your core",
               { kColumnX - 160.0f, 600.0f + m_avatarSlots.front().height + 8.0f }, 10,
               sf::Color(122, 116, 122), 1.4f);
@@ -2006,12 +2019,12 @@ void RoleSelectState::drawRoleTile(sf::RenderTarget& target, MechRole role, int 
     const sf::Color textColour = blocked ? sf::Color(120, 118, 116) : sf::Color(238, 232, 222);
     const float x = bounds.left + 22.0f;
 
-    drawLabel(target, m_font, displayName(role), { x, bounds.top + 16.0f }, 21,
+    drawLabel(target, displayName(role), { x, bounds.top + 16.0f }, 21,
               blocked ? sf::Color(120, 118, 116) : accent, 2.0f, true);
-    drawLabel(target, m_font, roleTitle(role), { x, bounds.top + 46.0f }, 13,
+    drawLabel(target, roleTitle(role), { x, bounds.top + 46.0f }, 13,
               sf::Color(158, 156, 154));
 
-    drawLabel(target, m_font, rolePassiveName(role), { x, bounds.top + 78.0f }, 14,
+    drawLabel(target, rolePassiveName(role), { x, bounds.top + 78.0f }, 14,
               textColour, 1.0f, true);
 
     // The passive text is one long sentence; wrap it by hand to the tile width.
@@ -2023,21 +2036,21 @@ void RoleSelectState::drawRoleTile(sf::RenderTarget& target, MechRole role, int 
     while (words >> word) {
         const std::string candidate = line.empty() ? word : line + " " + word;
         if (candidate.size() > 44) {
-            drawLabel(target, m_font, line, { x, y }, 12, sf::Color(176, 172, 168));
+            drawLabel(target, line, { x, y }, 12, sf::Color(176, 172, 168));
             y += 17.0f;
             line = word;
         } else {
             line = candidate;
         }
     }
-    if (!line.empty()) drawLabel(target, m_font, line, { x, y }, 12, sf::Color(176, 172, 168));
+    if (!line.empty()) drawLabel(target, line, { x, y }, 12, sf::Color(176, 172, 168));
 
     // Slot badge
     if (isPrimary || isSecondary) {
         const char* tag = isPrimary ? "PRIMARY" : "SECONDARY";
         sf::FloatRect badge { bounds.left + bounds.width - 106.0f, bounds.top + 12.0f, 94.0f, 22.0f };
         drawPanel(target, badge, sf::Color(14, 14, 18, 240), accent);
-        drawLabel(target, m_font, tag, { badge.left + 9.0f, badge.top + 4.0f }, 11, accent, 1.4f);
+        drawLabel(target, tag, { badge.left + 9.0f, badge.top + 4.0f }, 11, accent, 1.4f);
     }
 }
 
@@ -2046,19 +2059,19 @@ void RoleSelectState::render(sf::RenderTarget& target) {
     backdrop.setFillColor(sf::Color(12, 13, 17));
     target.draw(backdrop);
 
-    drawLabel(target, m_font, "DUAL-CORE PROTOCOL", { 640.0f - 150.0f, 54.0f }, 26,
+    drawLabel(target, "DUAL-CORE PROTOCOL", { 640.0f - 150.0f, 54.0f }, 26,
               sf::Color(236, 214, 178), 4.0f, true);
 
     std::ostringstream brief;
     brief << "Choose a primary core (" << DeckRules::kMinPrimary << "+ cards, may field its Titan)"
           << "  and a secondary splash (up to " << DeckRules::kMaxSecondary
           << " cards, no Titan).  " << DeckRules::kDeckSize << " cards total.";
-    drawLabel(target, m_font, brief.str(), { 210.0f, 94.0f }, 13, sf::Color(150, 148, 146));
+    drawLabel(target, brief.str(), { 210.0f, 94.0f }, 13, sf::Color(150, 148, 146));
 
-    drawLabel(target, m_font,
+    drawLabel(target,
               m_pickingPrimary ? "> SELECTING PRIMARY CORE" : "> SELECTING SECONDARY CORE",
               { 210.0f, 118.0f }, 13, sf::Color(236, 190, 74), 2.0f, true);
-    drawLabel(target, m_font, "TAB switches slot", { 960.0f, 118.0f }, 12,
+    drawLabel(target, "TAB switches slot", { 960.0f, 118.0f }, 12,
               sf::Color(120, 118, 116));
 
     for (int i = 0; i < kMechRoleCount; ++i) {
@@ -2128,7 +2141,7 @@ void MapState::drawGauge(sf::RenderTarget& target, sf::FloatRect box, float fill
     }
 
     sf::Text text;
-    text.setFont(m_font);
+    text.setFont(Fonts::ui());
     text.setString(caption);
     text.setCharacterSize(13);
     text.setStyle(sf::Text::Bold);
@@ -2215,7 +2228,7 @@ void MapState::renderPath(sf::RenderTarget& target) const {
         target.draw(number);
 
         sf::Text name;
-        name.setFont(m_font);
+        name.setFont(Fonts::ui());
         name.setString(path[i].name);
         name.setCharacterSize(12);
         name.setFillColor(current ? sf::Color(238, 226, 198)
@@ -2231,7 +2244,7 @@ void MapState::renderYourPanel(sf::RenderTarget& target) const {
     const sf::FloatRect panel(96.0f, 288.0f, 480.0f, 316.0f);
     drawPanel(target, panel, sf::Color(18, 16, 23, 238), sf::Color(74, 78, 94, 200));
 
-    drawLabel(target, m_font, "YOUR COMMANDER", { panel.left + 24.0f, panel.top + 18.0f }, 12,
+    drawLabel(target, "YOUR COMMANDER", { panel.left + 24.0f, panel.top + 18.0f }, 12,
               sf::Color(150, 162, 182), 3.0f);
 
     // The face the player chose on the menu, shown where the run can see it.
@@ -2250,7 +2263,7 @@ void MapState::renderYourPanel(sf::RenderTarget& target) const {
     title.setPosition(textX, panel.top + 48.0f);
     target.draw(title);
 
-    drawLabel(target, m_font,
+    drawLabel(target,
               std::string(displayName(g_run.getPrimaryRole())) + "  /  "
                   + displayName(g_run.getSecondaryRole()),
               { textX, panel.top + 78.0f }, 14, sf::Color(168, 176, 192), 1.6f);
@@ -2262,9 +2275,9 @@ void MapState::renderYourPanel(sf::RenderTarget& target) const {
               "REACTOR  " + std::to_string(hp) + " / " + std::to_string(Commander::kStartingHp));
 
     // --- deck composition, as a stacked bar plus chips ------------------------
-    drawLabel(target, m_font, "DECK", { panel.left + 24.0f, panel.top + 164.0f }, 12,
+    drawLabel(target, "DECK", { panel.left + 24.0f, panel.top + 164.0f }, 12,
               sf::Color(150, 162, 182), 3.0f);
-    drawLabel(target, m_font, std::to_string(g_run.deckSize()) + " CARDS",
+    drawLabel(target, std::to_string(g_run.deckSize()) + " CARDS",
               { panel.left + panel.width - 104.0f, panel.top + 164.0f }, 12,
               sf::Color(198, 192, 182), 2.0f);
 
@@ -2300,7 +2313,7 @@ void MapState::renderYourPanel(sf::RenderTarget& target) const {
         target.draw(dot);
 
         sf::Text label;
-        label.setFont(m_font);
+        label.setFont(Fonts::ui());
         label.setString(std::to_string(slice.count) + "  " + slice.label);
         label.setCharacterSize(12);
         label.setLetterSpacing(1.4f);
@@ -2310,7 +2323,7 @@ void MapState::renderYourPanel(sf::RenderTarget& target) const {
         chipX += 156.0f;
     }
 
-    drawLabel(target, m_font,
+    drawLabel(target,
               "Scrap one card after every win - the deck you finish with is the one you built.",
               { panel.left + 24.0f, panel.top + 258.0f }, 11, sf::Color(120, 124, 136), 1.0f);
 }
@@ -2320,7 +2333,7 @@ void MapState::renderNextPanel(sf::RenderTarget& target) const {
     const sf::FloatRect panel(608.0f, 288.0f, 576.0f, 316.0f);
     drawPanel(target, panel, sf::Color(22, 15, 18, 240), sf::Color(126, 74, 62, 210));
 
-    drawLabel(target, m_font,
+    drawLabel(target,
               "ENCOUNTER " + std::to_string(g_run.getEncounterNumber()) + " OF "
                   + std::to_string(RunState::kEncounters),
               { panel.left + 24.0f, panel.top + 18.0f }, 12, sf::Color(198, 128, 110), 3.0f);
@@ -2344,7 +2357,7 @@ void MapState::renderNextPanel(sf::RenderTarget& target) const {
     target.draw(name);
 
     sf::Text line;
-    line.setFont(m_font);
+    line.setFont(Fonts::ui());
     line.setString(next.subtitle);
     line.setCharacterSize(13);
     line.setFillColor(sf::Color(172, 164, 158));
@@ -2356,7 +2369,7 @@ void MapState::renderNextPanel(sf::RenderTarget& target) const {
               "REACTOR  " + std::to_string(next.commanderHp));
 
     // --- what you are walking into, as facts rather than a sentence ----------
-    drawLabel(target, m_font, "THREAT", { panel.left + 24.0f, panel.top + 164.0f }, 12,
+    drawLabel(target, "THREAT", { panel.left + 24.0f, panel.top + 164.0f }, 12,
               sf::Color(198, 128, 110), 3.0f);
 
     struct Fact { std::string key; std::string value; };
@@ -2371,10 +2384,10 @@ void MapState::renderNextPanel(sf::RenderTarget& target) const {
 
     float y = panel.top + 192.0f;
     for (const Fact& fact : facts) {
-        drawLabel(target, m_font, fact.key, { panel.left + 24.0f, y }, 11,
+        drawLabel(target, fact.key, { panel.left + 24.0f, y }, 11,
                   sf::Color(132, 118, 116), 2.0f);
         sf::Text value;
-        value.setFont(m_font);
+        value.setFont(Fonts::ui());
         value.setString(fact.value);
         value.setCharacterSize(14);
         value.setFillColor(sf::Color(224, 214, 202));
@@ -2402,7 +2415,7 @@ void MapState::render(sf::RenderTarget& target) {
     road[5] = sf::Vertex({ 1280.0f, 256.0f }, edge);
     target.draw(road);
 
-    drawLabel(target, m_font, "THE CAMPAIGN", { 96.0f, 46.0f }, 26,
+    drawLabel(target, "THE CAMPAIGN", { 96.0f, 46.0f }, 26,
               sf::Color(240, 206, 120), 6.0f, false);
 
     renderPath(target);
@@ -3475,7 +3488,7 @@ void DuelState::renderBoardGrid(sf::RenderTarget& target) {
 
             // Which row is which, once per row, in the empty left margin.
             const sf::FloatRect band = Layout::rowBand(side, line);
-            drawLabel(target, m_font,
+            drawLabel(target,
                       line == BoardLine::Frontline ? "FRONTLINE" : "SUPPORT",
                       { 296.0f, band.top + band.height / 2.0f - 5.0f }, 9,
                       sf::Color(edge.r, edge.g, edge.b, 170), 2.0f);
@@ -3667,7 +3680,7 @@ void DuelState::renderHq(sf::RenderTarget& target, Side side) {
     target.draw(tie);
 
     const float textLeft = box.left + 12.0f;
-    drawLabel(target, m_font, "REACTOR CORE", { textLeft, box.top + 8.0f }, 9,
+    drawLabel(target, "REACTOR CORE", { textLeft, box.top + 8.0f }, 9,
               sf::Color(accent.r, accent.g, accent.b, 220), 2.6f, true);
 
     // The bar gets the width the portrait and name were using.
@@ -3689,7 +3702,7 @@ void DuelState::renderHq(sf::RenderTarget& target, Side side) {
     target.draw(hp);
 
     if (targetable) {
-        drawLabel(target, m_font, "STRIKE THE CORE",
+        drawLabel(target, "STRIKE THE CORE",
                   { box.left + box.width / 2.0f - 46.0f, box.top + box.height + 4.0f }, 11,
                   sf::Color(255, 130, 118), 2.0f);
     }
@@ -3723,7 +3736,7 @@ void DuelState::renderCommanderPanel(sf::RenderTarget& target, Side side) {
 
     const std::string cores = std::string(displayName(cmd.getPrimaryRole())) + " / "
                             + displayName(cmd.getSecondaryRole());
-    drawLabel(target, m_font, cores,
+    drawLabel(target, cores,
               { panel.left + 72.0f, panel.top + 26.0f }, 10,
               sf::Color(accent.r, accent.g, accent.b, 210), 2.0f);
 
@@ -3746,12 +3759,15 @@ void DuelState::renderCommanderPanel(sf::RenderTarget& target, Side side) {
 
         sf::RectangleShape body({ cell.width, cell.height });
         body.setPosition(cell.left, cell.top);
-        body.setFillColor(charged ? sf::Color(248, 196, 70)
-                                  : (inCap ? sf::Color(58, 46, 22, 220)
-                                           : sf::Color(22, 20, 24, 190)));
+        // An empty cell inside the cap has to read as EMPTY. The first pass
+        // filled it dark olive under a gold outline, which at this size looked
+        // charged - a 0/4 turn showed four apparently lit cells. The fill is
+        // now near-black for both empty states and only the outline says
+        // whether the cell is in this turn's cap.
+        body.setFillColor(charged ? sf::Color(248, 196, 70) : sf::Color(18, 17, 22, 230));
         body.setOutlineThickness(1.0f);
-        body.setOutlineColor(inCap ? sf::Color(180, 138, 56, 230)
-                                   : sf::Color(64, 60, 66, 170));
+        body.setOutlineColor(inCap ? sf::Color(186, 144, 60, 235)
+                                   : sf::Color(58, 54, 62, 160));
         target.draw(body);
 
         // A charged cell gets a highlight down its middle, so a lit row is
@@ -3768,7 +3784,7 @@ void DuelState::renderCommanderPanel(sf::RenderTarget& target, Side side) {
     // this", the number answers "how much exactly".
     std::stringstream energy;
     energy << spent << " / " << cap << "  ENERGY";
-    drawLabel(target, m_font, energy.str(),
+    drawLabel(target, energy.str(),
               { panel.left + 72.0f, pipY + 18.0f }, 9,
               sf::Color(180, 156, 110), 1.8f);
 
@@ -3779,7 +3795,7 @@ void DuelState::renderCommanderPanel(sf::RenderTarget& target, Side side) {
         const sf::FloatRect core(panel.left + 202.0f, pipY - 1.0f, 44.0f, 17.0f);
         drawPanel(target, core, sf::Color(14, 24, 30, 245), sf::Color(96, 206, 226));
         sf::Text charge;
-        charge.setFont(m_font);
+        charge.setFont(Fonts::ui());
         charge.setString(std::to_string(cmd.getOvercharge()));
         charge.setCharacterSize(13);
         charge.setStyle(sf::Text::Bold);
@@ -3787,7 +3803,7 @@ void DuelState::renderCommanderPanel(sf::RenderTarget& target, Side side) {
         TextUtils::centerBoth(charge);
         charge.setPosition(core.left + 13.0f, core.top + 9.0f);
         target.draw(charge);
-        drawLabel(target, m_font, "OC", { core.left + 24.0f, core.top + 4.0f }, 9,
+        drawLabel(target, "OC", { core.left + 24.0f, core.top + 4.0f }, 9,
                   sf::Color(96, 166, 186), 1.4f);
     }
 
@@ -3855,7 +3871,7 @@ void DuelState::renderPiles(sf::RenderTarget& target, Side side) {
         target.draw(n);
 
         const bool hot = pile.box.contains(m_mousePos);
-        drawLabel(target, m_font, pile.label,
+        drawLabel(target, pile.label,
                   { pile.box.left + 1.0f, pile.box.top + pile.box.height + 3.0f }, 9,
                   hot ? sf::Color(226, 214, 196) : sf::Color(126, 120, 128), 1.8f);
         if (hot) {
@@ -3863,7 +3879,7 @@ void DuelState::renderPiles(sf::RenderTarget& target, Side side) {
             // a bare number.
             const std::string detail = std::string(pile.label) + ": "
                                      + std::to_string(pile.count) + " cards";
-            drawLabel(target, m_font, detail,
+            drawLabel(target, detail,
                       { pile.box.left, pile.box.top - 16.0f }, 11,
                       sf::Color(238, 226, 206), 1.2f);
         }
@@ -3913,7 +3929,7 @@ void DuelState::renderEndTurn(sf::RenderTarget& target) {
     // turn; nothing on screen said so.
     const sf::FloatRect box = m_endTurnButton.box.getGlobalBounds();
     sf::Text hint;
-    hint.setFont(m_font);
+    hint.setFont(Fonts::ui());
     hint.setString("[ SPACE ]");
     hint.setCharacterSize(9);
     hint.setLetterSpacing(2.4f);
@@ -3941,7 +3957,7 @@ void DuelState::renderLogButton(sf::RenderTarget& target) {
     }
 
     if (hot && !m_logOpen) {
-        drawLabel(target, m_font, "LOG",
+        drawLabel(target, "LOG",
                   { box.left + box.width + 8.0f, box.top + 14.0f }, 11,
                   sf::Color(210, 202, 194), 2.0f);
     }
@@ -3954,7 +3970,7 @@ void DuelState::renderLogPanel(sf::RenderTarget& target) {
     const sf::FloatRect panel(84.0f, 132.0f, 330.0f, 394.0f);
     drawPanel(target, panel, sf::Color(12, 11, 16, 246), sf::Color(150, 128, 84, 220));
 
-    drawLabel(target, m_font, "BATTLE LOG",
+    drawLabel(target, "BATTLE LOG",
               { panel.left + 14.0f, panel.top + 12.0f }, 13,
               sf::Color(236, 210, 150), 2.6f, true);
 
@@ -3965,7 +3981,7 @@ void DuelState::renderLogPanel(sf::RenderTarget& target) {
 
     // Newest last, oldest trimmed - the tail is what a player just missed.
     sf::Text body;
-    body.setFont(m_font);
+    body.setFont(Fonts::ui());
     body.setCharacterSize(12);
     body.setLineSpacing(1.45f);
     body.setFillColor(sf::Color(196, 190, 180));
@@ -3977,7 +3993,7 @@ void DuelState::renderLogPanel(sf::RenderTarget& target) {
     body.setPosition(panel.left + 14.0f, panel.top + 44.0f);
     target.draw(body);
 
-    drawLabel(target, m_font, "CLICK THE BARS TO CLOSE",
+    drawLabel(target, "CLICK THE BARS TO CLOSE",
               { panel.left + 14.0f, panel.top + panel.height - 22.0f }, 9,
               sf::Color(118, 112, 106), 1.8f);
 }
@@ -4000,7 +4016,7 @@ void DuelState::renderEnemyHand(sf::RenderTarget& target) {
     const int count = static_cast<int>(m_duel.commander(Side::Opponent).getHand().size());
     const sf::FloatRect area = Layout::enemyHandFan();
     if (count <= 0) {
-        drawLabel(target, m_font, "NO CARDS",
+        drawLabel(target, "NO CARDS",
                   { area.left + 60.0f, area.top + 24.0f }, 11,
                   sf::Color(120, 110, 124), 2.0f);
         return;
@@ -4014,7 +4030,7 @@ void DuelState::renderEnemyHand(sf::RenderTarget& target) {
     }
 
     sf::Text n;
-    n.setFont(m_font);
+    n.setFont(Fonts::ui());
     n.setString(std::to_string(count));
     n.setCharacterSize(15);
     n.setStyle(sf::Text::Bold);
@@ -4077,7 +4093,7 @@ void DuelState::renderTraps(sf::RenderTarget& target, Side side) {
                               side == Side::Player, highlighted);
     }
 
-    drawLabel(target, m_font,
+    drawLabel(target,
               side == Side::Player ? "COUNTER-PROTOCOLS" : "ENEMY COUNTERS",
               { Layout::kTrapX, Layout::trapZone(side).top - 14.0f }, 9,
               traps.empty() ? sf::Color(102, 94, 84) : sf::Color(160, 140, 108), 2.2f);
@@ -4232,9 +4248,9 @@ void DuelState::render(sf::RenderTarget& target) {
     // at 506) - the one strip of the top bar nothing else claims.
     std::stringstream turn;
     turn << "TURN " << m_duel.turnNumber();
-    drawLabel(target, m_font, turn.str(), { 300.0f, 14.0f }, 15,
+    drawLabel(target, turn.str(), { 300.0f, 14.0f }, 15,
               sf::Color(198, 186, 166), 2.6f, true);
-    drawLabel(target, m_font,
+    drawLabel(target,
               m_duel.activeSide() == Side::Player ? "YOUR MOVE" : "ENEMY MOVES",
               { 300.0f, 36.0f }, 13,
               m_duel.activeSide() == Side::Player ? sf::Color(240, 208, 128)
@@ -4270,7 +4286,7 @@ void DuelState::render(sf::RenderTarget& target) {
         text.setPosition(640.0f, 525.0f);
         target.draw(text);
 
-        drawLabel(target, m_font, "right-click to cancel", { 560.0f, 546.0f }, 12,
+        drawLabel(target, "right-click to cancel", { 560.0f, 546.0f }, 12,
                   sf::Color(150, 142, 130));
     }
 
@@ -4504,7 +4520,7 @@ void RewardState::render(sf::RenderTarget& target) {
                << g_run.getCommanderHp() << " HP  (+" << RunState::kHealBetweenFights
                << " after this)";
         sf::Text text;
-        text.setFont(m_font);
+        text.setFont(Fonts::ui());
         text.setString(footer.str());
         text.setCharacterSize(15);
         text.setFillColor(sf::Color(160, 154, 148));
@@ -4570,7 +4586,7 @@ void RewardState::render(sf::RenderTarget& target) {
     footer << "Deck: " << g_run.deckSize() << " cards   (floor "
            << RunState::kMinRunDeck << ")        Commander: " << g_run.getCommanderHp() << " HP";
     sf::Text text;
-    text.setFont(m_font);
+    text.setFont(Fonts::ui());
     text.setString(footer.str());
     text.setCharacterSize(14);
     text.setFillColor(sf::Color(140, 134, 130));

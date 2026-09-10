@@ -1,4 +1,6 @@
 #include "core/Engine.hpp"
+
+#include "utils/Fonts.hpp"
 #include "utils/AudioManager.hpp"
 #include "utils/Settings.hpp"
 #include <algorithm>
@@ -75,28 +77,13 @@ void Engine::toggleFullscreen() {
 // =============================================================================
 
 bool Engine::loadDefaultFont() {
-    // Prefer a classical face from assets, then fall back to a system serif.
-    // Existence is checked first so SFML does not log an error per attempt.
-    const std::vector<std::string> candidates = {
-        "assets/fonts/Cinzel-Bold.ttf",
-        "assets/fonts/MedievalSharp.ttf",
-        "C:/Windows/Fonts/georgia.ttf",
-        "C:/Windows/Fonts/times.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/segoeui.ttf"
-    };
-
-    for (const auto& path : candidates) {
-        std::error_code ec;
-        if (!std::filesystem::exists(path, ec)) continue;
-        if (m_font.loadFromFile(path)) {
-            std::cout << "[Engine] Font: " << path << "\n";
-            return true;
-        }
-    }
-
-    std::cerr << "[Engine] Error: could not load any font!\n";
-    return false;
+    // The faces themselves, and the reasoning behind the split, live in Fonts.
+    // The engine keeps a copy of the display face because that is what every
+    // state is handed as "the font"; small text and numbers go to Fonts::ui()
+    // at the point they are drawn.
+    if (!Fonts::load()) return false;
+    m_font = Fonts::display();
+    return true;
 }
 
 bool Engine::init() {

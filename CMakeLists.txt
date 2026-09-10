@@ -64,6 +64,7 @@ set(SANCTUM_CORE_SOURCES
     src/run/RunState.cpp
     src/utils/Avatars.cpp
     src/utils/DataLoader.cpp
+    src/utils/Fonts.cpp
     src/utils/Settings.cpp
     src/utils/AudioManager.cpp
     src/utils/AudioCatalogue.cpp
@@ -104,6 +105,7 @@ set(SANCTUM_CORE_HEADERS
     src/utils/ResourceManager.hpp
     src/utils/Avatars.hpp
     src/utils/DataLoader.hpp
+    src/utils/Fonts.hpp
     src/utils/Settings.hpp
     src/utils/AudioManager.hpp
     src/utils/AudioCatalogue.hpp

@@ -703,6 +703,46 @@ Casting a spell has its own cue now (`Spell_Activate.mp3`), resolved card-first,
 then doctrine, then that shared sting: a `pl_smite.wav` would beat
 `Paladin_Deploy.mp3`, which beats `Spell_Activate.mp3`.
 
+### Two faces, split by job
+
+The whole game was set in Georgia, inherited from the fantasy build this grew
+out of. Rendering the real strings at the real sizes showed two hard faults and
+one soft one:
+
+- **Georgia has no Vietnamese.** Every accented vowel came out an empty box.
+- **Georgia's numerals are text figures.** "Bastion-01" rendered "Bastion-o1",
+  and the attack and health badges — the numbers read more often than anything
+  else on screen — were set in digits that drop below the baseline.
+- A serif at 8–12px on a dark ground is the hardest thing a UI can ask of a
+  reader, and most of this game's text is at those sizes.
+
+| | Face | Carries |
+|---|---|---|
+| `Fonts::display()` | Constantia | Titles, commander names, the verdict, the intro — large, read once, carries the character |
+| `Fonts::ui()` | Segoe UI Semibold | Rules text, every label, every number |
+
+Semibold rather than regular on purpose: the game paints warm off-white on
+near-black nearly everywhere, and a regular weight thins out against that.
+Both are Windows system faces, so nothing ships and nothing is licensed; a
+`.ttf` in `assets/fonts` (`Display.ttf`, `UI.ttf`) overrides either without code.
+
+`drawLabel` no longer takes a font at all — every one of its fifty call sites is
+8–13px, so the choice is made once. It also **cuts tracking as text gets
+smaller** rather than leaving it: the labels were set at 2.0–2.6 across the
+board, which at 8px pulls a word far enough apart that it stops reading as one.
+
+Three things the change broke, all caught by looking:
+
+- The UI face runs wider than the serif at the same pixel size, so card names
+  ran off both edges. The text column went from 0.80 to 0.88 of the card, and a
+  name that still will not fit is **condensed to 88%** before being truncated —
+  shrinking below 8px would undo the reason for the change.
+- Long rules text overflowed the card and ran under the stat badges. Whole lines
+  are dropped now and the cut is marked; the full text is one hover away.
+- The truncation mark was written `"…"` and rendered as three wrong
+  characters. **`sf::Text` reads a `std::string` as Latin-1**, so anything above
+  ASCII has to go through `sf::String::fromUtf8`. It is three dots now.
+
 **Captions are Vietnamese and the game's own face cannot spell them.** Georgia is
 missing ten uppercase Vietnamese glyphs (Ế Ề Ể Ỉ Ị Ộ Ờ Ở Ứ Ử), so the subtitles
 would have rendered with holes. Rather than restyle every screen, the intro loads

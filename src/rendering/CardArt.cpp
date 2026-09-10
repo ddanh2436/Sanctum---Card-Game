@@ -1,4 +1,6 @@
 #include "rendering/CardArt.hpp"
+
+#include "utils/Fonts.hpp"
 #include "utils/ResourceManager.hpp"
 #include "utils/TextUtils.hpp"
 #include <algorithm>
@@ -25,7 +27,9 @@ void coverFit(sf::Sprite& sprite, const sf::Texture& texture, sf::Vector2f windo
     sprite.setScale(scale, scale);
 }
 
-void drawStatBadge(sf::RenderTarget& target, const sf::Font& font, sf::Vector2f centre,
+/// A stat gem. It takes no font: the number inside it is one of the things a
+/// player reads most often in a duel, so it is always set in the UI face.
+void drawStatBadge(sf::RenderTarget& target, sf::Vector2f centre,
                    float radius, sf::Color fill, int value, unsigned int charSize) {
     sf::CircleShape gem(radius);
     gem.setOrigin(radius, radius);
@@ -36,7 +40,7 @@ void drawStatBadge(sf::RenderTarget& target, const sf::Font& font, sf::Vector2f 
     target.draw(gem);
 
     sf::Text text;
-    text.setFont(font);
+    text.setFont(Fonts::ui());
     text.setString(std::to_string(value));
     text.setCharacterSize(charSize);
     text.setStyle(sf::Text::Bold);
@@ -118,7 +122,7 @@ void drawArtPlaceholder(sf::RenderTarget& target, const sf::Font& font,
     // The doctrine initial, sized to the window so it works at hand scale and
     // at the zoomed scale without a second set of numbers.
     sf::Text mark;
-    mark.setFont(font);
+    mark.setFont(font);   // decoration, drawn large - the display face suits it
     mark.setString(std::string(1, displayName(card.role)[0]));
     mark.setCharacterSize(static_cast<unsigned>(std::max(10.0f, size.y * 0.62f)));
     mark.setStyle(sf::Text::Bold);
@@ -371,7 +375,10 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
     const float artTop = -0.457f * size.y;
     const float artH = 0.457f * size.y;
     const float artW = 0.840f * size.x;
-    const float textW = 0.800f * size.x;
+    // 0.88, not 0.80. The column was measured around Georgia; the UI face runs
+    // wider at the same pixel size, and paying for that in width costs nothing
+    // but paying for it in point size undoes the reason for the change.
+    const float textW = 0.880f * size.x;
 
     // Body
     sf::RectangleShape body(size);
@@ -417,7 +424,7 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
 
     // Name
     sf::Text title;
-    title.setFont(font);
+    title.setFont(Fonts::ui());
     title.setString(card.name);
     title.setCharacterSize(static_cast<unsigned int>(0.082f * size.x));
     title.setStyle(sf::Text::Bold);
@@ -425,7 +432,31 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
     while (title.getCharacterSize() > 8 && title.getLocalBounds().width > textW) {
         title.setCharacterSize(title.getCharacterSize() - 1);
     }
+    // At hand size the floor of 8px is reached immediately, so a long name like
+    // "Bastion-01 Guard Drone" ran straight off both sides of the card. Rather
+    // than shrink below a readable size, condense it - a semibold sans takes
+    // 12% out of its width without looking squeezed, which covers every name in
+    // the catalogue. Anything still over is truncated rather than clipped, so
+    // the card says there is more to read instead of ending mid-word.
     TextUtils::centerHorizontally(title);
+    float squeeze = 1.0f;
+    if (title.getLocalBounds().width > textW) {
+        squeeze = std::max(0.88f, textW / title.getLocalBounds().width);
+        title.setScale(squeeze, 1.0f);
+    }
+    if (title.getLocalBounds().width * squeeze > textW) {
+        std::string clipped = card.name;
+        while (clipped.size() > 4) {
+            clipped.pop_back();
+            // Three dots, not an ellipsis glyph: sf::Text reads a std::string as
+            // Latin-1, so the three UTF-8 bytes of U+2026 arrive as three wrong
+            // characters. Anything above ASCII has to go through
+            // sf::String::fromUtf8, and at 8px it would not look different.
+            title.setString(clipped + "...");
+            TextUtils::centerHorizontally(title);
+            if (title.getLocalBounds().width * squeeze <= textW) break;
+        }
+    }
     title.setPosition(0.0f, 0.028f * size.y);
     target.draw(title, states);
 
@@ -437,7 +468,7 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
     else if (card.tier == CardTier::Tier3) typeLine += "  III";
 
     sf::Text type;
-    type.setFont(font);
+    type.setFont(Fonts::ui());
     type.setString(typeLine);
     type.setCharacterSize(static_cast<unsigned int>(0.054f * size.x));
     type.setLetterSpacing(1.5f);
@@ -463,15 +494,29 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
                                 : 0.075f * size.y;
     const float textRoom = size.y / 2.0f - textTop - badgeBand;
     sf::Text desc;
-    desc.setFont(font);
+    desc.setFont(Fonts::ui());
     desc.setLineSpacing(1.12f);
     desc.setFillColor(sf::Color(206, 204, 198));
     unsigned int textSize = static_cast<unsigned int>(0.080f * size.x);
     for (;;) {
         desc.setCharacterSize(textSize);
-        desc.setString(TextUtils::wrap(card.description, font, textSize, textW));
+        desc.setString(TextUtils::wrap(card.description, Fonts::ui(), textSize, textW));
         if (textSize <= 8 || desc.getLocalBounds().height <= textRoom) break;
         --textSize;
+    }
+
+    // A long rules box still will not fit on a 106px card at a readable size,
+    // and it used to simply run off the bottom edge and under the badges. Drop
+    // whole lines until it fits and mark the cut, which is honest: the full
+    // text is one hover away, and a card that trails off says so.
+    if (desc.getLocalBounds().height > textRoom) {
+        std::string rules = desc.getString();
+        while (!rules.empty() && desc.getLocalBounds().height > textRoom) {
+            const std::size_t cut = rules.rfind('\n');
+            if (cut == std::string::npos) { rules.clear(); break; }
+            rules.erase(cut);
+            desc.setString(rules + " ...");
+        }
     }
     TextUtils::centerHorizontally(desc);
     desc.setPosition(0.0f, textTop);
@@ -503,7 +548,7 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
         target.draw(local, states);
 
         sf::Text cost;
-        cost.setFont(font);
+        cost.setFont(Fonts::ui());
         cost.setString(std::to_string(card.manaCost));
         cost.setCharacterSize(static_cast<unsigned int>(gemR * 1.25f));
         cost.setStyle(sf::Text::Bold);
@@ -526,7 +571,7 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
         target.draw(atk, states);
 
         sf::Text atkText;
-        atkText.setFont(font);
+        atkText.setFont(Fonts::ui());
         atkText.setString(std::to_string(card.attack));
         atkText.setCharacterSize(static_cast<unsigned int>(r * 1.25f));
         atkText.setStyle(sf::Text::Bold);
@@ -618,7 +663,7 @@ void drawUnit(sf::RenderTarget& target, const sf::Font& font, const Unit& unit,
     target.draw(nameStrip);
 
     sf::Text name;
-    name.setFont(font);
+    name.setFont(Fonts::ui());
     name.setString(card.name);
     name.setCharacterSize(11);
     name.setFillColor(sf::Color(236, 232, 222));
@@ -633,7 +678,7 @@ void drawUnit(sf::RenderTarget& target, const sf::Font& font, const Unit& unit,
     const std::string keywords = keywordLine(card);
     if (!keywords.empty()) {
         sf::Text kw;
-        kw.setFont(font);
+        kw.setFont(Fonts::ui());
         kw.setString(keywords);
         kw.setCharacterSize(8);
         kw.setLetterSpacing(1.2f);
@@ -651,11 +696,11 @@ void drawUnit(sf::RenderTarget& target, const sf::Font& font, const Unit& unit,
     // Attack and health badges straddle the bottom corners
     const float r = 13.0f;
     const float badgeY = bounds.top + artH + (bounds.height - artH) / 2.0f;
-    drawStatBadge(target, font, { bounds.left + r + 3.0f, badgeY },
+    drawStatBadge(target, { bounds.left + r + 3.0f, badgeY },
                   r, sf::Color(226, 148, 62), unit.attack(), 13);
 
     const bool hurt = unit.damage > 0;
-    drawStatBadge(target, font, { bounds.left + bounds.width - r - 3.0f, badgeY },
+    drawStatBadge(target, { bounds.left + bounds.width - r - 3.0f, badgeY },
                   r, hurt ? sf::Color(214, 84, 78) : sf::Color(122, 186, 120), unit.health(), 13);
 
     // Status pips down the right edge
@@ -862,11 +907,11 @@ void drawTrapSlot(sf::RenderTarget& target, const sf::Font& font, const TrapCard
     target.draw(divider);
 
     sf::Text name;
-    name.setFont(font);
+    name.setFont(Fonts::ui());
     name.setCharacterSize(9);
     name.setStyle(sf::Text::Bold);
     name.setFillColor(sf::Color(232, 226, 216));
-    name.setString(TextUtils::wrap(card.name, font, 9, size.x - 6.0f));
+    name.setString(TextUtils::wrap(card.name, Fonts::ui(), 9, size.x - 6.0f));
     TextUtils::centerHorizontally(name);
     name.setPosition(bounds.left + size.x / 2.0f, bounds.top + artH + 2.0f);
     target.draw(name);
@@ -891,7 +936,7 @@ void drawTrapSlot(sf::RenderTarget& target, const sf::Font& font, const TrapCard
     target.draw(ribbon);
 
     sf::Text label;
-    label.setFont(font);
+    label.setFont(Fonts::ui());
     label.setString("ARMED");
     label.setCharacterSize(9);
     label.setStyle(sf::Text::Bold);
