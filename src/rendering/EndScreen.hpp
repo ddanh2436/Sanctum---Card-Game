@@ -57,6 +57,10 @@ public:
     /// How far the buttons still have to travel, in design-space pixels.
     float uiSlide() const { return (1.0f - uiReveal()) * 34.0f; }
 
+    /// Horizontal tear applied to the verdict, in design pixels. Non-zero on
+    /// a defeat only, and only while the signal is still failing.
+    float textTear() const;
+
     static constexpr float kGlitchEnd = 0.50f;
     static constexpr float kDimEnd    = 1.20f;
     static constexpr float kSlamEnd   = 2.00f;

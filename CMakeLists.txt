@@ -73,6 +73,7 @@ set(SANCTUM_CORE_SOURCES
     src/rendering/CombatVFX.cpp
     src/rendering/MenuBackdrop.cpp
     src/rendering/EndScreen.cpp
+    src/rendering/EndGameVFX.cpp
     src/rendering/PortraitRig.cpp
     src/rendering/FloatingText.cpp
     src/core/Engine.cpp
@@ -93,6 +94,7 @@ set(SANCTUM_CORE_HEADERS
     src/rendering/CombatVFX.hpp
     src/rendering/MenuBackdrop.hpp
     src/rendering/EndScreen.hpp
+    src/rendering/EndGameVFX.hpp
     src/rendering/PortraitRig.hpp
     src/rendering/FloatingText.hpp
     src/utils/ResourceManager.hpp

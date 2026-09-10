@@ -29,6 +29,22 @@ void centre(sf::Text& text) {
 
 } // namespace
 
+float EndScreen::textTear() const {
+    // Only a defeat tears, and only while the signal is still failing: a
+    // victory that stutters reads as a rendering fault, not as triumph.
+    if (!m_active || m_outcome != Outcome::Defeat) return 0.0f;
+    const float since = m_time - kSlamEnd;
+    if (since < 0.0f || since > 1.6f) return 0.0f;
+
+    // Bursts rather than a constant jitter. A verdict that shakes without pause
+    // reads as vibration; one that holds still and then snaps sideways for a
+    // frame reads as a broken feed.
+    const float fade = 1.0f - since / 1.6f;
+    const float gate = std::sin(since * 47.0f) * std::sin(since * 13.0f);
+    if (gate < 0.62f) return 0.0f;
+    return (std::sin(since * 211.0f) > 0.0f ? 1.0f : -1.0f) * 7.0f * fade;
+}
+
 void EndScreen::begin(Outcome outcome, const std::string& headline,
                       const std::string& subtitle) {
     m_outcome = outcome;
@@ -130,7 +146,8 @@ void EndScreen::render(sf::RenderTarget& target) {
     verdict.setStyle(sf::Text::Bold);
     verdict.setLetterSpacing(3.0f);
     centre(verdict);
-    verdict.setPosition(kDesignW / 2.0f, kDesignH / 2.0f + 118.0f);
+    const float tear = textTear();
+    verdict.setPosition(kDesignW / 2.0f + tear, kDesignH / 2.0f + 118.0f);
     verdict.setScale(scale, scale);
 
     // Fade in over the first third of the plunge; it is at full weight well
@@ -139,6 +156,20 @@ void EndScreen::render(sf::RenderTarget& target) {
     verdict.setFillColor(sf::Color(accent.r, accent.g, accent.b, toAlpha(textAlpha)));
     verdict.setOutlineColor(sf::Color(0, 0, 0, toAlpha(textAlpha * 0.8f)));
     verdict.setOutlineThickness(3.0f);
+
+    // A split-channel ghost on either side of the tear, the way a failing feed
+    // separates colour. Drawn only on the frames the tear is active, so it
+    // costs nothing the rest of the time.
+    if (std::abs(tear) > 0.01f) {
+        sf::Text ghost = verdict;
+        ghost.setOutlineThickness(0.0f);
+        ghost.setFillColor(sf::Color(90, 200, 255, toAlpha(textAlpha * 0.55f)));
+        ghost.setPosition(kDesignW / 2.0f - tear * 1.6f, kDesignH / 2.0f + 118.0f);
+        target.draw(ghost);
+        ghost.setFillColor(sf::Color(255, 70, 70, toAlpha(textAlpha * 0.55f)));
+        ghost.setPosition(kDesignW / 2.0f + tear * 2.2f, kDesignH / 2.0f + 118.0f);
+        target.draw(ghost);
+    }
     target.draw(verdict);
 
     // ---- Phase 3b: the rule and the subtitle, once it has landed ------------

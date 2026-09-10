@@ -6,6 +6,7 @@
 #include "rendering/CombatVFX.hpp"
 #include "rendering/MenuBackdrop.hpp"
 #include "rendering/EndScreen.hpp"
+#include "rendering/EndGameVFX.hpp"
 #include "rendering/PortraitRig.hpp"
 #include "rendering/FloatingText.hpp"
 #include "rendering/HolyVFX.hpp"
@@ -943,6 +944,10 @@ private:
     CombatVFX m_combat;
     CardSpotlight m_spotlight;
     EndScreen m_endScreen;
+    EndGameVFX m_endVfx;
+    /// Seconds of real time left in the hit stop. While this is running the
+    /// end sequence is stepped at a fraction of normal speed.
+    float m_hitStop = 0.0f;
     PortraitRig m_portraitRig;
 
     /// Phase 4 of the defeat sequence hands the player the decision instead of
@@ -3149,6 +3154,10 @@ void DuelState::update(float dt) {
 }
 
 void DuelState::beginEndSequence() {
+    // A beat of held time before anything moves. The reactor hitting zero is
+    // the loudest thing that happens in a duel and it used to pass in a single
+    // frame; stopping the clock for a fifth of a second is what makes it land.
+    m_hitStop = 0.20f;
     const bool won = m_duel.winner() == Side::Player;
     const Side loser = won ? Side::Opponent : Side::Player;
     const sf::FloatRect hq = Layout::hqCard(loser);
@@ -3179,6 +3188,8 @@ void DuelState::beginEndSequence() {
         m_portraitRig.begin({ 640.0f, 268.0f }, 260.0f);
     }
 
+    m_endVfx.begin(won ? EndGameVFX::Outcome::Victory : EndGameVFX::Outcome::Defeat, at);
+
     // Phase 1 opens on the reactor actually coming apart.
     m_combat.explosion(at, won ? sf::Color(240, 196, 92) : sf::Color(238, 92, 70));
     // The reactor that failed belongs to a doctrine, so it dies in that
@@ -3191,7 +3202,17 @@ void DuelState::beginEndSequence() {
 
 void DuelState::updateEndSequence(float dt) {
     if (!m_endScreen.active()) beginEndSequence();
+
+    // Time dilation, not a freeze: at a flat stop the sparks already in the air
+    // hang motionless and the pause reads as a stutter. Running everything at a
+    // sixth of speed keeps them crawling, which is what sells the held beat.
+    if (m_hitStop > 0.0f) {
+        m_hitStop -= dt;
+        dt *= 0.16f;
+    }
+
     m_endScreen.update(dt);
+    m_endVfx.update(dt);
     m_portraitRig.update(dt);
 
     const bool won = m_duel.winner() == Side::Player;
@@ -3965,8 +3986,14 @@ void DuelState::render(sf::RenderTarget& target) {
     m_spotlight.render(target);
     // Between the scrim and the verdict: EndScreen lays the scrim down first,
     // so the rig has to be drawn from inside that sandwich.
+    // Under the scrim: the wash, the rays and the fracture belong to the board,
+    // not to the verdict panel that dims it.
+    m_endVfx.renderBelow(target);
     m_endScreen.renderScrim(target);
     m_portraitRig.render(target);
+    // Over the portrait, under the lettering: ash, vignette and the seal frame
+    // the verdict rather than sitting behind the broken frame.
+    m_endVfx.renderAbove(target);
 
     // The end sequence covers everything, hand included - the duel is over and
     // the cards are no longer the subject.

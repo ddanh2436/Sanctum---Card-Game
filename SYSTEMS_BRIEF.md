@@ -42,6 +42,54 @@ Menu → Dual-Core Protocol → Campaign Map → Duel → Reward → Scrap Bay �
 
 Pushed as overlays, over whatever is underneath: **Settings**, **Card Inspect**.
 
+### The climax — three layers, not one
+
+The end of a duel is drawn by three objects that each own one job, because the
+first version had the timeline, the portrait and the atmosphere tangled in one
+class and every change to one broke the other two.
+
+| Layer | Owns |
+|---|---|
+| `EndScreen` | The clock and the typography: strobe, scrim, verdict slam, button reveal. Everything else reads its `elapsed()`. |
+| `PortraitRig` | The losing commander's portrait coming apart. |
+| `EndGameVFX` | The full-screen atmosphere, and nothing else. |
+
+They are drawn as a sandwich, and the order is the point: `EndGameVFX::renderBelow`
+puts the wash, the rays and the fracture *on the board*, then the scrim dims all of
+it, then the portrait breaks, then `renderAbove` lays ash, vignette and seal over the
+broken frame — so the atmosphere frames the verdict instead of hiding behind it.
+
+**Victory** opens a gold-and-cyan wash, fans fourteen rotating god-ray triangles
+(`sf::BlendAdd`) out of the dead reactor, floats gold embers *upward*, and spins a
+two-ring, 24-tick seal down onto the verdict. The seal lands at `kSealLand = 2.00f`,
+the same frame `EndScreen` slams its headline: one impact, not two.
+
+**Defeat** washes black-red, grows sixteen branching glass cracks out of the reactor
+— the splinters extend by a *rising vertex count*, so the glass keeps breaking rather
+than fading in — drops ash and cinders, and pulses a four-band vignette on a
+heartbeat that is deliberately **slowing**: `rate = max(1.05, 3.0 - time * 0.30)`.
+The verdict itself tears, `EndScreen::textTear()` returning a horizontal offset gated
+by two beating sines so the glitch is intermittent rather than a steady vibration,
+with cyan and red ghosts drawn only on the frames that actually tear.
+
+**A held beat before any of it.** `beginEndSequence` sets `m_hitStop = 0.20f` and
+`updateEndSequence` scales `dt` by `0.16` while it runs. It is time dilation, not a
+freeze — at a flat stop the sparks already in the air hang motionless and the pause
+reads as a dropped frame; at a sixth speed they crawl, which is what sells it.
+
+**No screen capture.** The obvious way to blur or fracture the board is an offscreen
+`sf::RenderTexture` of the whole frame. That is ~8 MB of VRAM held for the rest of the
+duel to reproduce a picture already on the screen, on a machine with 7.7 GB of RAM.
+The cracks are drawn as geometry over the live board instead, which costs a vertex
+array.
+
+**The backdrop is a slot, not a requirement.** Each outcome looks for a painting of
+its own — `assets/ui/victory_bg.*` and `defeat_bg.*`, four extensions and a couple
+of alternate spellings, first hit wins — and draws it cover-fitted under the wash
+with a slow 4% push in. The lookup is tried once per outcome per run, so a missing
+file costs nothing. With no art at all the effects play over the live board, which
+is a complete picture on its own: dropping a PNG in is an upgrade, not a fix.
+
 > **Not there.** No save or resume — a run exists only in memory, and quitting loses it.
 > No collection, no meta-progression between runs, and no deck editor.
 
@@ -600,7 +648,7 @@ Worth listing because "add juice" is a common answer to "what next", and most of
 | **Card spotlight** | Spells, counters and Titans slide in from their owner's side, hold ~1.1 s with a hologram scanline, then break into motes that drift to the scrap pile. Deliberately *not* fired for ordinary deployments. |
 | **Counter-protocols** | Alarm strobe, in-slot 3D card flip, then the spotlight. |
 | **Turn handover** | Full-width sweep banner across the board. |
-| **End of duel** | Four-phase sequence: critical glitch, board dim, verdict slam with camera punch, then buttons. The losing commander's portrait comes apart — cut into layers if they exist, otherwise sliced into bands. |
+| **End of duel** | A held beat, then a four-phase sequence: critical glitch, board dim, verdict slam with camera punch, then buttons. The losing commander's portrait comes apart, and a full-screen atmosphere plays behind it — see below. |
 
 > **Not there.** **Five of seven referenced audio files are missing** — all three music tracks,
 > plus `explosion.wav` and `summon.wav`. The code calls them and silently does nothing.
