@@ -83,12 +83,43 @@ duel to reproduce a picture already on the screen, on a machine with 7.7 GB of R
 The cracks are drawn as geometry over the live board instead, which costs a vertex
 array.
 
+**Two ornate frames, thinned to fit.** Dragoon and Siege have frames of their own
+now. They arrived as opaque RGB on a black ground — a card frame is drawn OVER
+the finished card, so an opaque one hides the artwork, the name and the rules
+text completely. The black is cut to alpha by grouping the dark pixels into
+connected regions and clearing only the ones that are actually background (the
+regions touching the outer edge, and the one containing the middle). A plain
+darkness threshold punches holes straight through the ornament's own shadows.
+
+Even transparent they were unusable: the border reached about **20% of the card
+width in from each edge**, and the text column is 88% — the card's own name was
+behind a stone pillar. The band is thinned by a **nine-slice resample**, which
+keeps the frame pinned to the card edge while narrowing the ornament to 75% of
+its width. Two wrong turns worth recording:
+
+- *Padding the source* scales the whole frame inward, so the ornament stops
+  reaching the card edge, floats in the middle, and still sits on the text.
+- *Taking the slice width from a scanline* catches the ornament at its narrowest
+  point, puts the slice boundary inside the artwork, and leaves the corners
+  chopped off and floating. The slice widths come from the bounding box of the
+  transparent window instead — the one edge that is unambiguous.
+
+Ornate-framed cards also get a **78% text column** rather than 88%, which is what
+finally clears the pillars. `art_source/frames_master/` holds the untouched
+originals and the pipeline always rebuilds from them, so it never compounds.
+
 **The backdrop is a slot, not a requirement.** Each outcome looks for a painting of
 its own — `assets/ui/victory_bg.*` and `defeat_bg.*`, four extensions and a couple
 of alternate spellings, first hit wins — and draws it cover-fitted under the wash
 with a slow 4% push in. The lookup is tried once per outcome per run, so a missing
 file costs nothing. With no art at all the effects play over the live board, which
 is a complete picture on its own: dropping a PNG in is an upgrade, not a fix.
+
+**The wash lightens to 52% when a backdrop is present.** Over the live board it
+is doing real work — burying a lit HUD, a hand of cards and four rows of frames
+under one mood. Over a painting made for this screen there is nothing to bury,
+and the same weight simply hides the picture: at full strength a full-colour
+defeat backdrop was crushed to near-black.
 
 ### Drawing a card
 

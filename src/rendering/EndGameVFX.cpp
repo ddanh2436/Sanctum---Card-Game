@@ -193,10 +193,17 @@ void EndGameVFX::drawBackdrop(sf::RenderTarget& target) {
     target.draw(sprite);
 }
 
-void EndGameVFX::drawWash(sf::RenderTarget& target) const {
+void EndGameVFX::drawWash(sf::RenderTarget& target, bool overArt) const {
     // A flat wash rather than a captured-and-tinted frame: the board underneath
     // is live and already correct, so this only has to change its colour.
-    const float in = ramp(m_time, 0.10f, 1.10f);
+    //
+    // How heavy it is depends on WHAT is underneath. Over the live board the
+    // wash is doing real work - it has to bury a lit HUD, a hand of cards and
+    // four rows of frames under one mood. Over a painting made for this screen
+    // there is nothing to bury, and the same weight simply hides the picture:
+    // the first pass crushed a full-colour defeat backdrop to near-black.
+    const float weight = overArt ? 0.52f : 1.0f;
+    const float in = ramp(m_time, 0.10f, 1.10f) * weight;
     sf::VertexArray wash(sf::TriangleStrip, 4);
 
     if (m_outcome == Outcome::Victory) {
@@ -328,7 +335,7 @@ void EndGameVFX::renderBelow(sf::RenderTarget& target) {
     if (!m_active) return;
 
     drawBackdrop(target);
-    drawWash(target);
+    drawWash(target, backdrop().loaded);
     if (m_outcome == Outcome::Victory) {
         drawRays(target);
     } else {

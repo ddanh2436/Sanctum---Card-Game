@@ -134,16 +134,24 @@ void drawArtPlaceholder(sf::RenderTarget& target, const sf::Font& font,
 }
 
 
+/// True for the two doctrines whose frame is an ornate border rather than a
+/// hairline. Their ornament eats into the card, so the text column has to give
+/// it room - see textW in drawCard.
+bool ornateFrame(const CardData& card) {
+    return card.role == MechRole::Dragoon || card.role == MechRole::Siege;
+}
+
 std::string frameFor(const CardData& card) {
-    // Until a mecha frame exists per doctrine, the four hand-made frames are
-    // shared out by feel: warm for plasma, cold for armour, dark for warfare.
+    // Dragoon and Siege have frames of their own now. The remaining four
+    // doctrines still share the hand-made set, allotted by feel: warm for
+    // plasma, cold for armour, dark for warfare.
     switch (card.role) {
-    case MechRole::Paladin:
-    case MechRole::Dragoon:    return "assets/frames/frame_paladin.png";
+    case MechRole::Dragoon:    return "assets/frames/frame_dragoon.png";
+    case MechRole::Siege:      return "assets/frames/frame_siege.png";
+    case MechRole::Paladin:    return "assets/frames/frame_paladin.png";
     case MechRole::Valkyrie:   return "assets/frames/frame_saintess.png";
     case MechRole::Inquisitor: return "assets/frames/frame_eclipse.png";
-    case MechRole::Vanguard:
-    case MechRole::Siege:      break;
+    case MechRole::Vanguard:   break;
     }
     return "assets/frames/frame_knight.png";
 }
@@ -378,7 +386,13 @@ void drawCard(sf::RenderTarget& target, const sf::Font& font, const CardData& ca
     // 0.88, not 0.80. The column was measured around Georgia; the UI face runs
     // wider at the same pixel size, and paying for that in width costs nothing
     // but paying for it in point size undoes the reason for the change.
-    const float textW = 0.880f * size.x;
+    //
+    // The two ornate frames are the exception. Their stone and steel border
+    // reaches about 13% of the card width in from each edge even after being
+    // thinned, and an 88% column ran straight under it - the card's own name
+    // was unreadable behind a pillar. They get 78% instead, which clears the
+    // ornament with a little to spare.
+    const float textW = (ornateFrame(card) ? 0.780f : 0.880f) * size.x;
 
     // Body
     sf::RectangleShape body(size);

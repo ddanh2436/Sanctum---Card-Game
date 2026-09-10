@@ -92,7 +92,8 @@ private:
     void drawBackdrop(sf::RenderTarget& target);
     void spawnMote();
     void buildCracks();
-    void drawWash(sf::RenderTarget& target) const;
+    /// `overArt` lightens the wash when a backdrop painting is behind it.
+    void drawWash(sf::RenderTarget& target, bool overArt) const;
     void drawRays(sf::RenderTarget& target) const;
     void drawVignette(sf::RenderTarget& target) const;
     void drawSeal(sf::RenderTarget& target) const;
