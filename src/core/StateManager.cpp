@@ -324,13 +324,24 @@ constexpr float kFrontLineY = 274.0f;
 constexpr float kPlayerFrontY = 280.0f;
 constexpr float kPlayerSupportY = 386.0f;
 
-// HQ cards, one per side, sitting behind that side's rows
-// Squeezed from 68 to 50 to buy the rows their extra height. The card now
-// carries a name, a bar and the number, and drops the second caption line.
+// Reactor cards, one per side.
+//
+// They used to sit centred at the top and bottom of the screen, which put the
+// only bar that matters at the opposite end of the board from the portrait,
+// energy and piles that describe the same commander - four separate readings of
+// one thing, spread across the screen.
+//
+// They are pinned to the left column now, touching their own commander strip:
+// the enemy's directly under theirs, the player's directly over theirs. The
+// column is 16..284 and the unit rows start at 374, so nothing moved on top of
+// a lane. It also moves the drop target for "attack the core" onto the
+// commander it belongs to, instead of at a card floating in open ground.
 constexpr float kHqW = 268.0f;
 constexpr float kHqH = 50.0f;
-constexpr float kEnemyHqY = 6.0f;
-constexpr float kPlayerHqY = 492.0f;
+// 178, not 162: the enemy piles end at 160 and their DECK / SCRAP captions run
+// to 172, so a card starting at 162 sat on top of them.
+constexpr float kEnemyHqY = 178.0f;
+constexpr float kPlayerHqY = 496.0f;
 
 // Trap zone and end turn live in the right margin.
 //
@@ -371,7 +382,7 @@ inline sf::FloatRect ghostRect(Side side, BoardLine line, int slot) {
 
 inline sf::FloatRect hqCard(Side side) {
     const float y = side == Side::Opponent ? kEnemyHqY : kPlayerHqY;
-    return { kCentreX - kHqW / 2.0f, y, kHqW, kHqH };
+    return { 16.0f, y, kHqW, kHqH };
 }
 
 inline sf::FloatRect trapSlot(Side side, int index) {
@@ -419,7 +430,10 @@ inline sf::FloatRect enemyHandFan() {
 
 /// Opens the battle log. Three bars, middle of the left margin.
 inline sf::FloatRect logButton() {
-    return { 20.0f, 336.0f, 54.0f, 44.0f };
+    // Was at y 336, in the middle of the left margin - which is the reactor
+    // column now. It sits in the right margin instead, in the gap between the
+    // enemy counter zone (ends at 164) and the End Turn control (starts at 296).
+    return { 1208.0f, 200.0f, 54.0f, 44.0f };
 }
 
 } // namespace Layout
@@ -958,6 +972,11 @@ private:
     UiButton m_retryButton;
     UiButton m_menuButton;
     float m_sparkClock = 0.0f;
+    /// Free-running, for anything that breathes on its own: the End Turn glow
+    /// when the turn is spent, and whatever else wants a phase. Separate from
+    /// m_sparkClock, which is a countdown between spark bursts and sits at zero
+    /// for the whole duel.
+    float m_uiClock = 0.0f;
 
     /// Where every frame was standing as of the last refresh. A destroyed frame
     /// is off the board by the time its event is read, so its wreck has to be
@@ -1034,6 +1053,16 @@ private:
     // input helpers
     int handCardAt(sf::Vector2f point) const;
     sf::Vector2f handCardCentre(int index, int count) const;
+    /// Degrees this hand card leans, so the hand reads as a fan rather than a
+    /// row of tiles. Positive is clockwise, matching sf::Transformable.
+    float handCardTilt(int index, int count) const;
+
+    /// How far the pointed-at card lifts clear of the fan, and how much bigger
+    /// it is drawn. At 1.45 the card covered the two beside it completely; at
+    /// 1.35 the fan still reads while the hovered card is legible outright,
+    /// which is the whole point - no click, no inspector.
+    static constexpr float kHoverLift = 45.0f;
+    static constexpr float kHoverZoom = 1.35f;
     sf::Vector2f handCardSize() const { return { 106.0f, 146.0f }; }
     /// Where face-down card `index` of the enemy's grip sits. Shared with the
     /// draw animation so a card flies to the exact slot it will occupy.
@@ -1043,6 +1072,10 @@ private:
     Unit* unitAt(sf::Vector2f point);
     sf::FloatRect rectOf(const Unit& unit) const;
     bool trapZoneHit(Side side, sf::Vector2f point) const;
+    /// True when nothing in hand can still be paid for. The End Turn control
+    /// changes colour on this, so "I am done" is answered by the button rather
+    /// than by the player checking every card against their energy.
+    bool outOfMoves() const;
     /// The player's own armed counter under this point, or nullptr. Only ever
     /// returns one of YOUR counters: the enemy's are face down and stay that way.
     const TrapCard* ownTrapAt(sf::Vector2f point) const;
@@ -1073,10 +1106,14 @@ private:
     void beginEndSequence();
     void updateEndSequence(float dt);
 
+    /// Dims the battlefield art so the board reads as furniture on top of it,
+    /// and draws the sixteen unit cells and six counter cells as real slots.
+    void renderBoardGrid(sf::RenderTarget& target);
     void renderRow(sf::RenderTarget& target, Side side, BoardLine line);
     void renderCommanderPanel(sf::RenderTarget& target, Side side);
     void renderPiles(sf::RenderTarget& target, Side side);
     void renderEnemyHand(sf::RenderTarget& target);
+    void renderEndTurn(sf::RenderTarget& target);
     void renderLogButton(sf::RenderTarget& target);
     void renderLogPanel(sf::RenderTarget& target);
     void drawCardBack(sf::RenderTarget& target, sf::FloatRect box, Side owner,
@@ -2455,8 +2492,21 @@ sf::Vector2f DuelState::handCardCentre(int index, int count) const {
     // badges clear of the screen edge and 25px of board between the hand and
     // the reactor card above it.
     float y = 640.0f - std::abs(offset) * 5.0f;
-    if (index == m_hoverCardIndex) y -= 52.0f;
+    if (index == m_hoverCardIndex) y -= kHoverLift;
     return { 640.0f + offset * spacing, y };
+}
+
+float DuelState::handCardTilt(int index, int count) const {
+    // A held hand fans; a hand laid out flat is a row of tiles. The outermost
+    // card leans four degrees, and everything between is proportional, so the
+    // fan opens with the hand rather than snapping wider at some threshold.
+    //
+    // The hovered card is straightened, because it is being read rather than
+    // held - a tilted card at 1.35x is harder to read than an upright one.
+    if (count <= 1 || index == m_hoverCardIndex) return 0.0f;
+    const float offset = static_cast<float>(index) - (count - 1) / 2.0f;
+    const float extreme = (count - 1) / 2.0f;
+    return (offset / extreme) * 4.0f;
 }
 
 int DuelState::handCardAt(sf::Vector2f point) const {
@@ -3174,6 +3224,7 @@ void DuelState::consumeEvents() {
 }
 
 void DuelState::update(float dt) {
+    m_uiClock += dt;
     m_floating.update(dt);
     m_vfx.update(dt);
     m_combat.update(dt);
@@ -3342,6 +3393,96 @@ void DuelState::finishDuel() {
 
 // ---- rendering --------------------------------------------------------------
 
+/**
+ * The board, as furniture.
+ *
+ * The battlefield illustration is a bright silver mandala across the whole
+ * centre of the screen, and the board was drawn as nothing at all - empty
+ * ground stayed empty, and a cell only appeared while a card was being dragged.
+ * The result was that the busiest thing on screen was decoration and the parts
+ * a player actually has to read were invisible until they were already
+ * committing to a move.
+ *
+ * Two changes, both here: the art is pushed back under a veil weighted toward
+ * the middle where the mandala is brightest, and all sixteen unit cells plus
+ * the six counter cells are drawn as standing slots with metal edges.
+ *
+ * They are drawn *under* the rows, so an occupied cell is a frame sitting in a
+ * socket rather than a frame with a box around it.
+ */
+void DuelState::renderBoardGrid(sf::RenderTarget& target) {
+    // A veil, not a flat wash: heaviest over the centre column, where the
+    // mandala is, and lifting toward the edges so the corners of the artwork
+    // still show. Four bands is enough for a gradient this shallow.
+    const struct { float x0, x1; float alpha; } bands[] = {
+        {   0.0f,  240.0f,  56.0f },
+        { 240.0f,  520.0f, 104.0f },
+        { 520.0f,  760.0f, 132.0f },
+        { 760.0f, 1040.0f, 104.0f },
+        { 1040.0f, 1280.0f, 56.0f },
+    };
+    for (const auto& band : bands) {
+        sf::VertexArray veil(sf::TriangleStrip, 4);
+        const sf::Color c(8, 8, 13, static_cast<sf::Uint8>(band.alpha));
+        veil[0] = sf::Vertex({ band.x0, 0.0f }, c);
+        veil[1] = sf::Vertex({ band.x1, 0.0f }, c);
+        veil[2] = sf::Vertex({ band.x0, 720.0f }, c);
+        veil[3] = sf::Vertex({ band.x1, 720.0f }, c);
+        target.draw(veil);
+    }
+
+    // Sockets. The player's are warm and the enemy's cool, so which half of the
+    // board you are looking at is answerable without reading a single number.
+    for (Side side : { Side::Opponent, Side::Player }) {
+        const bool mine = (side == Side::Player);
+        const sf::Color edge = mine ? sf::Color(150, 128, 86, 150)
+                                    : sf::Color(126, 96, 138, 140);
+
+        for (BoardLine line : { BoardLine::Frontline, BoardLine::Support }) {
+            // The frontline is where the fighting happens, so it carries the
+            // stronger edge: a glance has to separate the two rows.
+            const float weight = (line == BoardLine::Frontline) ? 1.0f : 0.62f;
+
+            for (int slot = 0; slot < Board::kLineSlots; ++slot) {
+                const sf::FloatRect cell = Layout::unitRect(side, line, slot);
+                drawPanel(target, cell, sf::Color(10, 10, 16, 96),
+                          sf::Color(edge.r, edge.g, edge.b,
+                                    static_cast<sf::Uint8>(edge.a * weight)));
+
+                // Corner ticks rather than a full second border: they mark the
+                // cell as a socket without adding another closed rectangle to a
+                // screen that already has a lot of them.
+                const float tick = 9.0f;
+                const sf::Color bright(edge.r, edge.g, edge.b,
+                                       static_cast<sf::Uint8>(220 * weight));
+                sf::VertexArray corners(sf::Lines, 16);
+                const sf::Vector2f p[4] = {
+                    { cell.left, cell.top },
+                    { cell.left + cell.width, cell.top },
+                    { cell.left, cell.top + cell.height },
+                    { cell.left + cell.width, cell.top + cell.height },
+                };
+                const float sx[4] = {  1.0f, -1.0f,  1.0f, -1.0f };
+                const float sy[4] = {  1.0f,  1.0f, -1.0f, -1.0f };
+                for (int i = 0; i < 4; ++i) {
+                    corners[i * 4 + 0] = sf::Vertex(p[i], bright);
+                    corners[i * 4 + 1] = sf::Vertex(p[i] + sf::Vector2f(tick * sx[i], 0.0f), bright);
+                    corners[i * 4 + 2] = sf::Vertex(p[i], bright);
+                    corners[i * 4 + 3] = sf::Vertex(p[i] + sf::Vector2f(0.0f, tick * sy[i]), bright);
+                }
+                target.draw(corners);
+            }
+
+            // Which row is which, once per row, in the empty left margin.
+            const sf::FloatRect band = Layout::rowBand(side, line);
+            drawLabel(target, m_font,
+                      line == BoardLine::Frontline ? "FRONTLINE" : "SUPPORT",
+                      { 296.0f, band.top + band.height / 2.0f - 5.0f }, 9,
+                      sf::Color(edge.r, edge.g, edge.b, 170), 2.0f);
+        }
+    }
+}
+
 void DuelState::renderRow(sf::RenderTarget& target, Side side, BoardLine line) {
     const int occupied = static_cast<int>(m_duel.board().unitsIn(side, line).size());
 
@@ -3509,34 +3650,30 @@ void DuelState::renderHq(sf::RenderTarget& target, Side side) {
     card.setOutlineColor(targetable ? sf::Color(255, 96, 84) : accent);
     target.draw(card);
 
-    // Portrait fills the left end, the way a real HQ card carries its crest.
-    const sf::FloatRect portraitBox(box.left + 4.0f, box.top + 4.0f, 42.0f, box.height - 8.0f);
-    CardArt::drawAvatar(target, isEnemy ? m_enemyArtPath : m_playerArtPath,
-                        portraitBox, accent, 0.10f);
+    // No portrait and no name on this card any more. It used to carry both,
+    // which was right when it floated in open ground at the far end of the
+    // board; now that it is pinned to the commander strip, the portrait and the
+    // name are already an inch away and the card was showing them twice.
+    //
+    // A short bracket ties it to the strip instead, so the two read as one
+    // block rather than as two things that happen to be adjacent.
+    const float tieY = isEnemy ? box.top : box.top + box.height;
+    sf::VertexArray tie(sf::Lines, 4);
+    const sf::Color tieInk(accent.r, accent.g, accent.b, 150);
+    tie[0] = sf::Vertex({ box.left + 10.0f, tieY }, tieInk);
+    tie[1] = sf::Vertex({ box.left + 10.0f, tieY + (isEnemy ? -14.0f : 14.0f) }, tieInk);
+    tie[2] = sf::Vertex({ box.left + box.width - 10.0f, tieY }, tieInk);
+    tie[3] = sf::Vertex({ box.left + box.width - 10.0f, tieY + (isEnemy ? -14.0f : 14.0f) }, tieInk);
+    target.draw(tie);
 
-    // Name plate over the remaining width
-    const float textLeft = portraitBox.left + portraitBox.width + 8.0f;
-    sf::Text name;
-    name.setFont(m_font);
-    name.setString(cmd.getName());
-    name.setCharacterSize(13);
-    name.setStyle(sf::Text::Bold);
-    name.setLetterSpacing(1.2f);
-    name.setFillColor(sf::Color(238, 228, 212));
-    while (name.getCharacterSize() > 9 &&
-           name.getLocalBounds().width > box.width - portraitBox.width - 80.0f) {
-        name.setCharacterSize(name.getCharacterSize() - 1);
-    }
-    name.setPosition(textLeft, box.top + 4.0f);
-    target.draw(name);
+    const float textLeft = box.left + 12.0f;
+    drawLabel(target, m_font, "REACTOR CORE", { textLeft, box.top + 8.0f }, 9,
+              sf::Color(accent.r, accent.g, accent.b, 220), 2.6f, true);
 
-    drawLabel(target, m_font, "REACTOR CORE", { textLeft, box.top + 20.0f }, 8,
-              sf::Color(accent.r, accent.g, accent.b, 200), 2.2f);
-
-    // Life bar under the name so damage reads at a glance
+    // The bar gets the width the portrait and name were using.
     const float ratio = static_cast<float>(cmd.getHp()) /
                         static_cast<float>(std::max(1, cmd.getMaxHp()));
-    drawBar(target, { textLeft, box.top + 33.0f, box.width - portraitBox.width - 84.0f, 10.0f },
+    drawBar(target, { textLeft, box.top + 26.0f, box.width - 110.0f, 14.0f },
             ratio, ratio < 0.3f ? sf::Color(216, 52, 48) : sf::Color(176, 60, 62),
             sf::Color(38, 30, 30, 235));
 
@@ -3590,44 +3727,67 @@ void DuelState::renderCommanderPanel(sf::RenderTarget& target, Side side) {
               { panel.left + 72.0f, panel.top + 26.0f }, 10,
               sf::Color(accent.r, accent.g, accent.b, 210), 2.0f);
 
-    // Energy as a single stamped badge, the way Kredits read in KARDS.
-    const sf::FloatRect badge(panel.left + 72.0f, panel.top + 42.0f, 54.0f, 28.0f);
-    drawPanel(target, badge, sf::Color(28, 22, 14, 245), sf::Color(226, 158, 44));
+    // Energy as a row of cells rather than a stamped "2 | 2".
+    //
+    // The number was accurate and useless: deciding whether a 3-cost card is
+    // affordable meant reading two digits and subtracting, every time. Ten
+    // cells answer it at a glance - the lit ones are what is left, and the
+    // outlined ones are the ceiling this turn.
+    const int spent = cmd.getMana();
+    const int cap = cmd.getManaCap();
+    const float pipY = panel.top + 44.0f;
+    const float pipW = 11.0f;
+    const float pipGap = 2.0f;
 
-    sf::Text mana;
-    mana.setFont(m_font);
-    mana.setString(std::to_string(cmd.getMana()));
-    mana.setCharacterSize(18);
-    mana.setStyle(sf::Text::Bold);
-    mana.setFillColor(sf::Color(248, 196, 70));
-    TextUtils::centerBoth(mana);
-    mana.setPosition(badge.left + 17.0f, badge.top + 14.0f);
-    target.draw(mana);
+    for (int i = 0; i < 10; ++i) {
+        const sf::FloatRect cell(panel.left + 72.0f + i * (pipW + pipGap), pipY, pipW, 15.0f);
+        const bool inCap = i < cap;
+        const bool charged = i < spent;
 
-    sf::RectangleShape slash({ 1.0f, 18.0f });
-    slash.setPosition(badge.left + 32.0f, badge.top + 5.0f);
-    slash.setFillColor(sf::Color(150, 120, 60));
-    target.draw(slash);
+        sf::RectangleShape body({ cell.width, cell.height });
+        body.setPosition(cell.left, cell.top);
+        body.setFillColor(charged ? sf::Color(248, 196, 70)
+                                  : (inCap ? sf::Color(58, 46, 22, 220)
+                                           : sf::Color(22, 20, 24, 190)));
+        body.setOutlineThickness(1.0f);
+        body.setOutlineColor(inCap ? sf::Color(180, 138, 56, 230)
+                                   : sf::Color(64, 60, 66, 170));
+        target.draw(body);
 
-    drawLabel(target, m_font, std::to_string(cmd.getManaCap()),
-              { badge.left + 38.0f, badge.top + 6.0f }, 13, sf::Color(196, 164, 96));
+        // A charged cell gets a highlight down its middle, so a lit row is
+        // legible as cells and not as one solid gold bar.
+        if (charged) {
+            sf::RectangleShape spark({ 2.0f, cell.height - 6.0f });
+            spark.setPosition(cell.left + cell.width / 2.0f - 1.0f, cell.top + 3.0f);
+            spark.setFillColor(sf::Color(255, 244, 196));
+            target.draw(spark);
+        }
+    }
 
-    // The overcharge core sits beside the energy badge. A Paladin always shows
+    // The exact figure, small, under the cells: the cells answer "can I afford
+    // this", the number answers "how much exactly".
+    std::stringstream energy;
+    energy << spent << " / " << cap << "  ENERGY";
+    drawLabel(target, m_font, energy.str(),
+              { panel.left + 72.0f, pipY + 18.0f }, 9,
+              sf::Color(180, 156, 110), 1.8f);
+
+    // The overcharge core sits beside the energy cells. A Paladin always shows
     // it, empty or not, because a resource that only appears once it has
     // something in it is a resource the player never learns they have.
     if (cmd.getOvercharge() > 0 || cmd.getPrimaryRole() == MechRole::Paladin) {
-        const sf::FloatRect core(badge.left + 60.0f, badge.top, 54.0f, 28.0f);
+        const sf::FloatRect core(panel.left + 202.0f, pipY - 1.0f, 44.0f, 17.0f);
         drawPanel(target, core, sf::Color(14, 24, 30, 245), sf::Color(96, 206, 226));
         sf::Text charge;
         charge.setFont(m_font);
         charge.setString(std::to_string(cmd.getOvercharge()));
-        charge.setCharacterSize(18);
+        charge.setCharacterSize(13);
         charge.setStyle(sf::Text::Bold);
         charge.setFillColor(sf::Color(126, 226, 244));
         TextUtils::centerBoth(charge);
-        charge.setPosition(core.left + 17.0f, core.top + 14.0f);
+        charge.setPosition(core.left + 13.0f, core.top + 9.0f);
         target.draw(charge);
-        drawLabel(target, m_font, "OC", { core.left + 32.0f, core.top + 7.0f }, 11,
+        drawLabel(target, m_font, "OC", { core.left + 24.0f, core.top + 4.0f }, 9,
                   sf::Color(96, 166, 186), 1.4f);
     }
 
@@ -3708,6 +3868,61 @@ void DuelState::renderPiles(sf::RenderTarget& target, Side side) {
                       sf::Color(238, 226, 206), 1.2f);
         }
     }
+}
+
+bool DuelState::outOfMoves() const {
+    if (!isPlayerTurn()) return false;
+    for (const CardData& card : m_duel.commander(Side::Player).getHand()) {
+        if (canPlayCard(card)) return false;
+    }
+    // A frame that can still swing is a move too, so a board full of ready
+    // attackers must not read as a spent turn.
+    for (const Unit* unit : m_duel.board().unitsIn(Side::Player, BoardLine::Frontline)) {
+        if (unit && unit->canAct()) return false;
+    }
+    for (const Unit* unit : m_duel.board().unitsIn(Side::Player, BoardLine::Support)) {
+        if (unit && unit->canAct()) return false;
+    }
+    return true;
+}
+
+/// The End Turn control, plus what it has to say about the turn.
+void DuelState::renderEndTurn(sf::RenderTarget& target) {
+    const bool spent = outOfMoves();
+    if (spent) {
+        // A slow pulse in green rather than the standing gold. Nothing else on
+        // the board is green, so it reads at the edge of vision - which is the
+        // point, since the player is looking at their hand, not at this corner.
+        const float pulse = 0.5f + 0.5f * std::sin(m_uiClock * 4.2f);
+        const sf::FloatRect box = m_endTurnButton.box.getGlobalBounds();
+        for (int ring = 3; ring >= 1; --ring) {
+            const float grow = static_cast<float>(ring) * 3.0f;
+            sf::RectangleShape glow({ box.width + grow * 2.0f, box.height + grow * 2.0f });
+            glow.setPosition(box.left - grow, box.top - grow);
+            glow.setFillColor(sf::Color::Transparent);
+            glow.setOutlineThickness(1.5f);
+            glow.setOutlineColor(sf::Color(120, 226, 150,
+                static_cast<sf::Uint8>((70.0f / ring) * (0.45f + 0.55f * pulse))));
+            target.draw(glow);
+        }
+    }
+
+    m_endTurnButton.render(target);
+
+    // The shortcut, spelled out under the control. Space already ended the
+    // turn; nothing on screen said so.
+    const sf::FloatRect box = m_endTurnButton.box.getGlobalBounds();
+    sf::Text hint;
+    hint.setFont(m_font);
+    hint.setString("[ SPACE ]");
+    hint.setCharacterSize(9);
+    hint.setLetterSpacing(2.4f);
+    hint.setFillColor(m_endTurnButton.enabled
+                          ? (spent ? sf::Color(150, 226, 170) : sf::Color(148, 138, 122))
+                          : sf::Color(92, 88, 84));
+    TextUtils::centerBoth(hint);
+    hint.setPosition(box.left + box.width / 2.0f, box.top + box.height + 11.0f);
+    target.draw(hint);
 }
 
 void DuelState::renderLogButton(sf::RenderTarget& target) {
@@ -3828,18 +4043,44 @@ void DuelState::renderTraps(sf::RenderTarget& target, Side side) {
         const sf::FloatRect box = Layout::trapSlot(side, i);
         const TrapCard* trap =
             i < static_cast<int>(traps.size()) ? &traps[static_cast<size_t>(i)] : nullptr;
-        // Empty trap cells only show while you are holding a trap.
+        // An empty counter cell used to appear only while a counter was being
+        // dragged, which meant the zone existed but nothing said so until you
+        // had already picked up the card that goes in it. It stands there now.
+        if (!trap) {
+            drawPanel(target, box, sf::Color(10, 10, 16, 110),
+                      side == Side::Player ? sf::Color(132, 112, 76, 130)
+                                           : sf::Color(112, 86, 124, 120));
+            // A closed latch: two bars and a keyway, so the empty cell says
+            // what it is for rather than being one more blank rectangle.
+            const float cx = box.left + box.width / 2.0f;
+            const float cy = box.top + box.height / 2.0f;
+            const sf::Color ink = side == Side::Player ? sf::Color(150, 128, 86, 130)
+                                                       : sf::Color(126, 96, 138, 120);
+            sf::RectangleShape bar({ box.width * 0.44f, 2.0f });
+            bar.setOrigin(bar.getSize().x / 2.0f, 1.0f);
+            bar.setFillColor(ink);
+            for (int k = -1; k <= 1; k += 2) {
+                bar.setPosition(cx, cy + static_cast<float>(k) * 9.0f);
+                target.draw(bar);
+            }
+            sf::CircleShape keyway(4.0f, 12);
+            keyway.setOrigin(4.0f, 4.0f);
+            keyway.setPosition(cx, cy);
+            keyway.setFillColor(sf::Color::Transparent);
+            keyway.setOutlineThickness(1.5f);
+            keyway.setOutlineColor(ink);
+            target.draw(keyway);
+        }
         if (!trap && !draggingTrap) continue;
         const bool highlighted = draggingTrap && !trap && Layout::trapZone(side).contains(m_mousePos);
         CardArt::drawTrapSlot(target, m_font, trap, box, side,
                               side == Side::Player, highlighted);
     }
 
-    if (!traps.empty() || draggingTrap) {
-        drawLabel(target, m_font, side == Side::Player ? "SET" : "ENEMY SET",
-                  { Layout::kTrapX, Layout::trapZone(side).top - 14.0f }, 9,
-                  sf::Color(126, 112, 90), 2.2f);
-    }
+    drawLabel(target, m_font,
+              side == Side::Player ? "COUNTER-PROTOCOLS" : "ENEMY COUNTERS",
+              { Layout::kTrapX, Layout::trapZone(side).top - 14.0f }, 9,
+              traps.empty() ? sf::Color(102, 94, 84) : sf::Color(160, 140, 108), 2.2f);
 }
 
 void DuelState::renderHand(sf::RenderTarget& target) {
@@ -3853,14 +4094,18 @@ void DuelState::renderHand(sf::RenderTarget& target) {
         if (i == m_dragCardIndex || i == m_hoverCardIndex) continue;
         if (m_drawFlight.hides(Side::Player, i)) continue;   // still in the air
         const CardData& card = hand[static_cast<size_t>(i)];
-        CardArt::drawCard(target, m_font, card, handCardCentre(i, count), size, 0.0f,
+        CardArt::drawCard(target, m_font, card, handCardCentre(i, count), size,
+                          handCardTilt(i, count),
                           isPlayerTurn() && canPlayCard(card), false);
     }
+    // The pointed-at card last, so it is over the whole fan rather than only
+    // over the cards drawn before it.
     if (m_hoverCardIndex >= 0 && m_hoverCardIndex < count && m_hoverCardIndex != m_dragCardIndex
         && !m_drawFlight.hides(Side::Player, m_hoverCardIndex)) {
         const CardData& card = hand[static_cast<size_t>(m_hoverCardIndex)];
         CardArt::drawCard(target, m_font, card, handCardCentre(m_hoverCardIndex, count),
-                          size * 1.45f, 0.0f, isPlayerTurn() && canPlayCard(card), true);
+                          size * kHoverZoom, 0.0f,
+                          isPlayerTurn() && canPlayCard(card), true);
     }
 }
 
@@ -3960,6 +4205,9 @@ void DuelState::render(sf::RenderTarget& target) {
         target.draw(glow);
     }
 
+    // The board itself, over the artwork and under everything that moves.
+    renderBoardGrid(target);
+
     // Beams and shockwaves sit under the frames; debris and arrows sit over
     // them, so a shot passes behind its target and its sparks land in front.
     m_combat.renderBelow(target);
@@ -3992,7 +4240,7 @@ void DuelState::render(sf::RenderTarget& target) {
               m_duel.activeSide() == Side::Player ? sf::Color(240, 208, 128)
                                                   : sf::Color(198, 128, 198), 2.0f);
 
-    m_endTurnButton.render(target);
+    renderEndTurn(target);
 
     renderLogPanel(target);
 
