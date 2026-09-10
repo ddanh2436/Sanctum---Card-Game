@@ -172,6 +172,20 @@ private:
               const std::string& cardId = std::string());
     void log(const std::string& text) { emit(DuelEvent::Type::Log, m_active, text); }
 
+    /**
+     * Draw `count` cards and announce each one separately.
+     *
+     * Every draw in the game goes through here so that a CardDrawn event names
+     * the card it is about. The events used to be one per *effect* and carried
+     * no id at all, which was enough for a log line and nothing else - the
+     * presentation layer could not tell how many cards moved, let alone which,
+     * so it could not animate them leaving the pile.
+     *
+     * `text` is put on the first event only; the rest are silent, so a five
+     * card opening hand is five animations and one log line.
+     */
+    int drawFor(Side side, int count, const std::string& text = std::string());
+
     std::unique_ptr<Unit> makeUnit(const CardData& card, Side owner);
     void recomputeAuras();
     void damageUnit(Unit& unit, int amount, bool plasma, Unit* source, Side attackerSide);

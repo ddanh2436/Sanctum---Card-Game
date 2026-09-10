@@ -6,6 +6,7 @@
 #include "rendering/CombatVFX.hpp"
 #include "rendering/MenuBackdrop.hpp"
 #include "rendering/EndScreen.hpp"
+#include "rendering/DrawFlight.hpp"
 #include "rendering/EndGameVFX.hpp"
 #include "rendering/PortraitRig.hpp"
 #include "rendering/FloatingText.hpp"
@@ -943,6 +944,7 @@ private:
     HolyVFX m_vfx;
     CombatVFX m_combat;
     CardSpotlight m_spotlight;
+    DrawFlight m_drawFlight;
     EndScreen m_endScreen;
     EndGameVFX m_endVfx;
     /// Seconds of real time left in the hit stop. While this is running the
@@ -1032,6 +1034,11 @@ private:
     int handCardAt(sf::Vector2f point) const;
     sf::Vector2f handCardCentre(int index, int count) const;
     sf::Vector2f handCardSize() const { return { 106.0f, 146.0f }; }
+    /// Where face-down card `index` of the enemy's grip sits. Shared with the
+    /// draw animation so a card flies to the exact slot it will occupy.
+    sf::FloatRect enemyHandCardBox(int index, int count) const;
+    /// Send whatever was just drawn on its way from the pile to the hand.
+    void launchDraws(const std::vector<DuelEvent>& batch);
     Unit* unitAt(sf::Vector2f point);
     sf::FloatRect rectOf(const Unit& unit) const;
     bool trapZoneHit(Side side, sf::Vector2f point) const;
@@ -1077,6 +1084,7 @@ private:
     void renderFrontLine(sf::RenderTarget& target);
     void renderTraps(sf::RenderTarget& target, Side side);
     void renderHand(sf::RenderTarget& target);
+    void renderDrawFlights(sf::RenderTarget& target);
     void renderDragOverlay(sf::RenderTarget& target);
 
     bool isPlayerTurn() const { return !m_duel.isOver() && m_duel.activeSide() == Side::Player; }
@@ -2878,8 +2886,59 @@ void DuelState::updateLiveArrow() {
                           valid ? sf::Color(236, 190, 74) : sf::Color(150, 96, 96), valid);
 }
 
+/**
+ * Turn this batch's CardDrawn events into flights.
+ *
+ * The whole batch is needed at once, not one event at a time: by the time the
+ * events are read the engine has already appended every drawn card, so the only
+ * way to know which hand slot a given draw belongs to is to count the batch and
+ * work back from the end of the hand.
+ */
+void DuelState::launchDraws(const std::vector<DuelEvent>& batch) {
+    for (Side side : { Side::Player, Side::Opponent }) {
+        std::vector<const DuelEvent*> drawn;
+        for (const DuelEvent& event : batch) {
+            if (event.type == DuelEvent::Type::CardDrawn && event.side == side) {
+                drawn.push_back(&event);
+            }
+        }
+        if (drawn.empty()) continue;
+
+        const int held = static_cast<int>(m_duel.commander(side).getHand().size());
+        const int first = held - static_cast<int>(drawn.size());
+        if (first < 0) continue;   // something else ate the hand; skip the flourish
+
+        const sf::FloatRect pile = Layout::deckPile(side);
+        const sf::Vector2f from(pile.left + pile.width / 2.0f,
+                                pile.top + pile.height / 2.0f);
+
+        for (int i = 0; i < static_cast<int>(drawn.size()); ++i) {
+            const CardData* card = DataLoader::findCard(drawn[static_cast<size_t>(i)]->cardId);
+            if (!card) continue;
+            const int slot = first + i;
+
+            sf::Vector2f to;
+            sf::Vector2f size;
+            if (side == Side::Player) {
+                to = handCardCentre(slot, held);
+                size = handCardSize();
+            } else {
+                const sf::FloatRect box = enemyHandCardBox(slot, held);
+                to = { box.left + box.width / 2.0f, box.top + box.height / 2.0f };
+                size = { box.width, box.height };
+            }
+            // Staggered, because an opening hand of five leaving the pile on
+            // the same frame arrives as one shape rather than as five cards.
+            m_drawFlight.launch(*card, side, slot, from, to, size,
+                                static_cast<float>(i) * 0.11f);
+        }
+    }
+}
+
 void DuelState::consumeEvents() {
-    for (const DuelEvent& event : m_duel.drainEvents()) {
+    const std::vector<DuelEvent> batch = m_duel.drainEvents();
+    launchDraws(batch);
+    for (const DuelEvent& event : batch) {
         pushLog(event.text);
 
         switch (event.type) {
@@ -3104,6 +3163,12 @@ void DuelState::update(float dt) {
     m_vfx.update(dt);
     m_combat.update(dt);
     m_spotlight.update(dt);
+    m_drawFlight.update(dt);
+    if (m_drawFlight.consumeFlip()) {
+        // A dedicated stem first, then whatever whoosh the author has; if
+        // neither is there the animation simply plays silent.
+        AudioManager::get().playNamed({ "card_flip", "card_draw", "whoosh", "draw" }, 1.0f);
+    }
     if (m_queuedDelay > 0.0f) {
         m_queuedDelay -= dt;
         if (m_queuedDelay <= 0.0f) {
@@ -3688,6 +3753,19 @@ void DuelState::renderLogPanel(sf::RenderTarget& target) {
 }
 
 /// The enemy hand, face-down along the top edge.
+sf::FloatRect DuelState::enemyHandCardBox(int index, int count) const {
+    const sf::FloatRect area = Layout::enemyHandFan();
+    const float cardW = 42.0f;
+    const float cardH = 60.0f;
+    // Cards tighten up as the grip grows rather than running off the screen.
+    const float step = count > 1
+        ? std::min(24.0f, (area.width - cardW) / static_cast<float>(count - 1))
+        : 0.0f;
+    const float span = cardW + step * static_cast<float>(count - 1);
+    const float startX = area.left + (area.width - span) / 2.0f;
+    return { startX + step * static_cast<float>(index), area.top + 2.0f, cardW, cardH };
+}
+
 void DuelState::renderEnemyHand(sf::RenderTarget& target) {
     const int count = static_cast<int>(m_duel.commander(Side::Opponent).getHand().size());
     const sf::FloatRect area = Layout::enemyHandFan();
@@ -3698,19 +3776,11 @@ void DuelState::renderEnemyHand(sf::RenderTarget& target) {
         return;
     }
 
-    const float cardW = 42.0f;
     const float cardH = 60.0f;
-    // Cards tighten up as the grip grows rather than running off the screen.
-    const float step = count > 1
-        ? std::min(24.0f, (area.width - cardW) / static_cast<float>(count - 1))
-        : 0.0f;
-    const float span = cardW + step * static_cast<float>(count - 1);
-    const float startX = area.left + (area.width - span) / 2.0f;
-
     for (int i = 0; i < count; ++i) {
-        const sf::FloatRect box(startX + step * static_cast<float>(i),
-                                area.top + 2.0f, cardW, cardH);
-        drawCardBack(target, box, Side::Opponent, sf::Color(198, 120, 198), 1.0f);
+        if (m_drawFlight.hides(Side::Opponent, i)) continue;   // still in the air
+        drawCardBack(target, enemyHandCardBox(i, count), Side::Opponent,
+                     sf::Color(198, 120, 198), 1.0f);
     }
 
     sf::Text n;
@@ -3766,14 +3836,38 @@ void DuelState::renderHand(sf::RenderTarget& target) {
     // hovered card clear of the stack.
     for (int i = 0; i < count; ++i) {
         if (i == m_dragCardIndex || i == m_hoverCardIndex) continue;
+        if (m_drawFlight.hides(Side::Player, i)) continue;   // still in the air
         const CardData& card = hand[static_cast<size_t>(i)];
         CardArt::drawCard(target, m_font, card, handCardCentre(i, count), size, 0.0f,
                           isPlayerTurn() && canPlayCard(card), false);
     }
-    if (m_hoverCardIndex >= 0 && m_hoverCardIndex < count && m_hoverCardIndex != m_dragCardIndex) {
+    if (m_hoverCardIndex >= 0 && m_hoverCardIndex < count && m_hoverCardIndex != m_dragCardIndex
+        && !m_drawFlight.hides(Side::Player, m_hoverCardIndex)) {
         const CardData& card = hand[static_cast<size_t>(m_hoverCardIndex)];
         CardArt::drawCard(target, m_font, card, handCardCentre(m_hoverCardIndex, count),
                           size * 1.45f, 0.0f, isPlayerTurn() && canPlayCard(card), true);
+    }
+}
+
+/// Cards mid-flight from a pile to a hand. Drawn last of the board layers so a
+/// card passing over the rows is not clipped by them.
+void DuelState::renderDrawFlights(sf::RenderTarget& target) {
+    for (const DrawFlight::Frame& frame : m_drawFlight.frames()) {
+        if (frame.faceUp && frame.owner == Side::Player) {
+            CardArt::drawCard(target, m_font, *frame.card, frame.centre, frame.size,
+                              0.0f, true, false);
+        } else {
+            // The enemy's cards never turn over, and the player's are a back
+            // until the pinch: a face visible on the way up would give away the
+            // draw before the flip has anything left to reveal.
+            const sf::FloatRect box(frame.centre.x - frame.size.x / 2.0f,
+                                    frame.centre.y - frame.size.y / 2.0f,
+                                    frame.size.x, frame.size.y);
+            drawCardBack(target, box, frame.owner,
+                         frame.owner == Side::Player ? sf::Color(214, 178, 108)
+                                                     : sf::Color(198, 120, 198),
+                         frame.alpha);
+        }
     }
 }
 
@@ -3888,6 +3982,7 @@ void DuelState::render(sf::RenderTarget& target) {
     renderLogPanel(target);
 
     renderHand(target);
+    renderDrawFlights(target);
     m_combat.renderAbove(target);
     m_floating.render(target);
     renderDragOverlay(target);

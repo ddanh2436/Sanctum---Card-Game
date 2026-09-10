@@ -42,11 +42,27 @@ void DuelEngine::startDuel(DuelistSetup player, DuelistSetup opponent) {
     m_commanders[1].setDeck(std::move(opponent.deck));
     m_commanders[0].shuffleDeck();
     m_commanders[1].shuffleDeck();
-    m_commanders[0].draw(Commander::kOpeningHand);
-    m_commanders[1].draw(Commander::kOpeningHand);
+    drawFor(Side::Player, Commander::kOpeningHand);
+    drawFor(Side::Opponent, Commander::kOpeningHand);
 
     m_active = Side::Opponent;   // beginTurn flips, so the player moves first
     beginTurn(Side::Player);
+}
+
+int DuelEngine::drawFor(Side side, int count, const std::string& text) {
+    Commander& me = m_commanders[index(side)];
+    const std::size_t before = me.getHand().size();
+    const int taken = me.draw(count);
+
+    // Counted from the hand rather than from `taken`, because a draw can come
+    // up short - an empty core, or a hand already at its limit - and the events
+    // have to describe what actually arrived.
+    const std::vector<CardData>& hand = me.getHand();
+    for (std::size_t i = before; i < hand.size(); ++i) {
+        emit(DuelEvent::Type::CardDrawn, side, i == before ? text : std::string(),
+             -1, 0, -1, hand[i].id);
+    }
+    return taken;
 }
 
 void DuelEngine::beginTurn(Side side) {
@@ -95,8 +111,7 @@ void DuelEngine::beginTurn(Side side) {
     // a conclusion, and a Valkyrie core recycling its wrecks back into the deck
     // will not even run out of cards. The simulator found duels still going at
     // forty turns with both reactors near full.
-    if (me.draw()) {
-        emit(DuelEvent::Type::CardDrawn, side, "");
+    if (drawFor(side, 1) > 0) {
     } else if (me.getDeck().empty()) {
         m_fatigue[index(side)] += kFatigueStep;
         damageCommander(side, m_fatigue[index(side)],
@@ -357,8 +372,7 @@ void DuelEngine::resolveSpell(Side side, const CardData& card, int targetId) {
         break;
     }
     case SpellKind::DrawThenRepairIfLosses: {
-        me.draw(card.spellValue);
-        emit(DuelEvent::Type::CardDrawn, side, "");
+        drawFor(side, card.spellValue);
         if (m_unitsLostThisTurn[index(side)] > 0 && card.spellValue2 > 0) {
             me.heal(card.spellValue2);
             emit(DuelEvent::Type::CommanderHealed, side,
@@ -941,8 +955,7 @@ void DuelEngine::runAbilities(Unit& unit, AbilityTrigger trigger, Unit* other) {
             break;
         }
         case AbilityKind::DrawCards: {
-            me.draw(ability.value);
-            emit(DuelEvent::Type::CardDrawn, side, "");
+            drawFor(side, ability.value);
             break;
         }
         case AbilityKind::RepairReactor: {
@@ -1202,8 +1215,7 @@ void DuelEngine::applyTribunalPayoff(Side owner) {
     // its whole deck around counters firing, so that is what it is now paid for.
     if (m_commanders[index(owner)].getPrimaryRole() != MechRole::Inquisitor) return;
 
-    m_commanders[index(owner)].draw(kTribunalDraw);
-    emit(DuelEvent::Type::CardDrawn, owner, "Cold Read: the tribunal reads ahead");
+    drawFor(owner, kTribunalDraw, "Cold Read: the tribunal reads ahead");
     damageCommander(other(owner), kTribunalBurn,
                     "The tribunal burns the enemy core");
 }

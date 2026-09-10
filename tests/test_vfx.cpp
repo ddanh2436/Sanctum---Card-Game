@@ -8,6 +8,7 @@
 #include "TestAssert.hpp"
 #include "rendering/CardArt.hpp"
 #include "rendering/CombatVFX.hpp"
+#include "rendering/DrawFlight.hpp"
 
 #include <SFML/Graphics/RenderTexture.hpp>
 #include <cmath>
@@ -146,6 +147,134 @@ void test_flare_holds_long_enough_to_see() {
     std::cout << "[PASS] test_flare_holds_long_enough_to_see\n";
 }
 
+
+// ---------------------------------------------------------------------------
+// DrawFlight
+//
+// Geometry and a clock, so this is checked by reading numbers rather than
+// pixels. Catching it in the running game is the wrong tool twice over: the
+// deal is over about a second after the duel opens, and the state change that
+// starts the duel takes long enough to swallow the whole animation before the
+// first screenshot lands.
+// ---------------------------------------------------------------------------
+
+CardData sampleCard() {
+    CardData card;
+    card.id = "vg_test";
+    card.name = "Test Frame";
+    return card;
+}
+
+const sf::Vector2f kPile(43.0f, 670.0f);     // the player's deck stack
+const sf::Vector2f kSlot(640.0f, 640.0f);    // a hand slot
+const sf::Vector2f kSize(106.0f, 146.0f);
+
+/// Step a flight to `seconds` in small slices, the way a frame loop would.
+void runTo(DrawFlight& flight, float seconds) {
+    for (float t = 0.0f; t < seconds; t += 0.01f) flight.update(0.01f);
+}
+
+void test_flight_leaves_the_pile_and_reaches_the_slot() {
+    DrawFlight flight;
+    flight.launch(sampleCard(), Side::Player, 3, kPile, kSlot, kSize);
+
+    auto frames = flight.frames();
+    CHECK_MSG(frames.size() == 1, "the card did not launch");
+    const sf::Vector2f start = frames[0].centre;
+    CHECK_MSG(std::abs(start.x - kPile.x) < 1.0f && std::abs(start.y - kPile.y) < 1.0f,
+              "the card does not start on the draw pile");
+
+    // Just before it settles it should be sitting on its hand slot.
+    runTo(flight, 0.58f);
+    frames = flight.frames();
+    CHECK_MSG(!frames.empty(), "the card vanished before it landed");
+    const sf::Vector2f end = frames[0].centre;
+    std::cout << "  start (" << start.x << "," << start.y << ")  end ("
+              << end.x << "," << end.y << ")\n";
+    CHECK_MSG(std::abs(end.x - kSlot.x) < 1.0f && std::abs(end.y - kSlot.y) < 1.0f,
+              "the card does not finish on the hand slot it was aimed at");
+
+    runTo(flight, 0.10f);
+    CHECK_MSG(!flight.busy(), "the flight never finished");
+    std::cout << "[PASS] test_flight_leaves_the_pile_and_reaches_the_slot\n";
+}
+
+void test_flight_arcs_above_both_ends() {
+    DrawFlight flight;
+    flight.launch(sampleCard(), Side::Player, 0, kPile, kSlot, kSize);
+
+    // Screen Y grows downward, so "high" is a small Y. The apex must clear the
+    // higher of the two endpoints, or the card slides across the board instead
+    // of being pulled off the stack.
+    float highest = 9999.0f;
+    for (float t = 0.0f; t < 0.45f; t += 0.01f) {
+        flight.update(0.01f);
+        const auto frames = flight.frames();
+        if (!frames.empty()) highest = std::min(highest, frames[0].centre.y);
+    }
+    const float ceiling = std::min(kPile.y, kSlot.y);
+    std::cout << "  apex y=" << highest << "  higher endpoint y=" << ceiling << "\n";
+    CHECK_MSG(highest < ceiling - 60.0f, "the flight path is flat, not an arc");
+    std::cout << "[PASS] test_flight_arcs_above_both_ends\n";
+}
+
+void test_card_turns_over_exactly_once_and_late() {
+    DrawFlight flight;
+    flight.launch(sampleCard(), Side::Player, 0, kPile, kSlot, kSize);
+
+    runTo(flight, 0.44f);
+    CHECK_MSG(!flight.frames().empty() && !flight.frames()[0].faceUp,
+              "the card shows its face before it has finished flying");
+    CHECK_MSG(!flight.consumeFlip(), "the flip fired early");
+
+    // Somewhere in the pinch the card must be edge-on, or the turn reads as a
+    // card that simply changed picture.
+    float narrowest = 9999.0f;
+    for (float t = 0.0f; t < 0.16f; t += 0.005f) {
+        flight.update(0.005f);
+        const auto frames = flight.frames();
+        if (!frames.empty()) narrowest = std::min(narrowest, frames[0].size.x);
+    }
+    std::cout << "  narrowest width " << narrowest << " of " << kSize.x << "\n";
+    CHECK_MSG(narrowest < kSize.x * 0.10f, "the card never closes up as it turns");
+    CHECK_MSG(flight.consumeFlip(), "the flip never reported itself");
+    CHECK_MSG(!flight.consumeFlip(), "the flip reported itself twice");
+    std::cout << "[PASS] test_card_turns_over_exactly_once_and_late\n";
+}
+
+void test_the_hand_slot_stays_empty_until_the_card_lands() {
+    DrawFlight flight;
+    flight.launch(sampleCard(), Side::Player, 4, kPile, kSlot, kSize);
+
+    CHECK_MSG(flight.hides(Side::Player, 4), "the hand would draw the card twice");
+    CHECK_MSG(!flight.hides(Side::Player, 3), "an unrelated hand slot was blanked");
+    CHECK_MSG(!flight.hides(Side::Opponent, 4), "the wrong side's hand was blanked");
+
+    runTo(flight, 0.65f);
+    CHECK_MSG(!flight.hides(Side::Player, 4),
+              "the slot is still hidden after the card landed - the hand would be short");
+    std::cout << "[PASS] test_the_hand_slot_stays_empty_until_the_card_lands\n";
+}
+
+void test_a_batch_is_staggered_not_stacked() {
+    DrawFlight flight;
+    for (int i = 0; i < 5; ++i) {
+        flight.launch(sampleCard(), Side::Player, i, kPile, kSlot, kSize,
+                      static_cast<float>(i) * 0.11f);
+    }
+    // Only the first has left the pile on the opening frame; five cards leaving
+    // together arrive as one shape rather than as five cards.
+    CHECK_MSG(flight.frames().size() == 1, "the whole hand launched on one frame");
+
+    runTo(flight, 0.45f);
+    std::cout << "  airborne at 0.45s: " << flight.frames().size() << " of 5\n";
+    CHECK_MSG(flight.frames().size() == 5, "the batch never all got moving");
+
+    runTo(flight, 0.60f);
+    CHECK_MSG(!flight.busy(), "the staggered batch never cleared");
+    std::cout << "[PASS] test_a_batch_is_staggered_not_stacked\n";
+}
+
 } // namespace
 
 int main() {
@@ -156,6 +285,12 @@ int main() {
     test_flare_draws_a_border_in_the_armed_colour();
     test_flare_burns_off_and_disappears();
     test_flare_holds_long_enough_to_see();
+
+    test_flight_leaves_the_pile_and_reaches_the_slot();
+    test_flight_arcs_above_both_ends();
+    test_card_turns_over_exactly_once_and_late();
+    test_the_hand_slot_stays_empty_until_the_card_lands();
+    test_a_batch_is_staggered_not_stacked();
 
     std::cout << "========================================\n";
     std::cout << " ALL COMBAT VFX TESTS PASSED\n";
