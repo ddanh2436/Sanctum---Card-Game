@@ -90,6 +90,59 @@ with a slow 4% push in. The lookup is tried once per outcome per run, so a missi
 file costs nothing. With no art at all the effects play over the live board, which
 is a complete picture on its own: dropping a PNG in is an upgrade, not a fix.
 
+### Drawing a card
+
+A draw is a flight, not an appearance. The back lifts off the pile at half size,
+arcs to its hand slot on a quadratic Bezier, then pinches its X axis to nothing,
+swaps to the face and opens back out — 0.60s end to end, staggered 0.11s a card
+so a five card opening hand fans out instead of arriving as one shape. While a
+card is in the air `DrawFlight::hides` keeps its hand slot empty, or it is on
+screen twice.
+
+**The control point sits 150px up, for an arc meant to clear 80.** A quadratic
+Bezier only pulls half way to its control point, so the obvious 80 measured as a
+34px bow off the player's pile — barely an arc.
+
+**Two engine bugs had to go first.** The opening hand emitted no `CardDrawn`
+event at all: `startDuel` dealt four cards straight out of `Commander::draw`, so
+the most visible deal in the game was invisible to the presentation layer. And
+every other draw emitted one event per *effect* with no card id, so a spell that
+drew three cards produced one anonymous event. Both go through
+`DuelEngine::drawFor` now, which announces each card separately and names it.
+
+### Landing signatures — one per doctrine
+
+Every deployment used to play the same shockwave, dust and white flash, so a
+Vanguard walker and a Valkyrie arrived identically.
+
+| Doctrine | Landing | Shake |
+|---|---|---|
+| Vanguard | pale steel fissures tearing 150px out, dust | 0.12s |
+| Arclight | a plasma shaft from off-screen into a pool of light | — |
+| Dragoon | fire thrown flat along the deck as a shock front | 0.18s |
+| Overseer | two EMP rings at different rates, static round the cell | — |
+| Siege | slow heavy dust, deep cracks | 0.35s |
+| Valkyrie | drifting motes, a slow ring | — |
+
+They are recipes over five shared primitives — `groundCracks`, `lightColumn`,
+`boltRing`, `feathers`, `emberRing` — not six particle systems, which is what
+keeps them looking like the same game. The recipes live in `DeploySignature`
+rather than in `DuelState`, and the shake is *returned* rather than applied, so
+both can be rendered offscreen and asserted on: the six are checked to be
+distinguishable from each other by colour or coverage, and Valkyrie is checked to
+be the one landing that asks for no shake at all.
+
+> **Why they are not screenshot-tested.** Catching a half-second landing in the
+> running game meant banking four turns of energy, guessing which card in hand
+> was an affordable unit, and hoping a capture fell inside the window — three
+> attempts running it did not. But the *pictures* caught four things no assertion
+> would have: the Vanguard cracks were darker than the battlefield art, so they
+> drew correctly and were invisible; at a 78px reach they sat almost entirely
+> behind the 112px unit tile drawn on top of them; the light column was a flat
+> khaki bar, now three nested wedges with a hot core; and `sf::Lines` are one
+> pixel wide, so a fissure read as a scratch and is drawn three times at
+> one-pixel offsets. Assert the numbers, look at the pictures.
+
 > **Not there.** No save or resume — a run exists only in memory, and quitting loses it.
 > No collection, no meta-progression between runs, and no deck editor.
 
@@ -516,6 +569,39 @@ leaving a hole in the layout.
 
 ---
 
+### The board reads as furniture now
+
+Four questions the player used to have to work out for themselves.
+
+**Where can I put things.** Empty ground stayed empty and a cell appeared only
+while a card was already in the air. All sixteen unit cells and both counter
+zones are drawn as standing sockets, the frontline carrying a stronger edge than
+support, each row captioned in the left margin, and the artwork pushed back under
+a veil weighted toward the middle where the mandala is brightest. An empty
+counter cell shows a closed latch, so it says what it is for.
+
+**How much energy have I got.** `2 | 2` was accurate and useless — deciding
+whether a 3-cost card was affordable meant reading two digits and subtracting,
+every time. Ten cells answer it at a glance; the exact figure is kept underneath.
+
+**What am I holding.** The hand fans, the outermost card leaning 4°. The
+pointed-at card lifts 45px, straightens, draws at 1.35 and draws last so it is
+over the whole fan — at 1.45 it covered the two cards beside it outright.
+
+**Am I done.** When nothing in hand can be paid for and no frame can still swing,
+End Turn pulses green. Nothing else in the game is green, so it reads at the edge
+of vision, which is where it has to: the player is looking at their hand. The
+`[ SPACE ]` shortcut is written under the button.
+
+**The reactor cards moved.** They were centred top and bottom, putting the only
+bar that matters at the far end of the board from the portrait, energy and piles
+describing the same commander — and carried a second copy of that portrait and
+name to compensate. They are pinned to the left column now, touching their own
+commander strip and tied to it with a bracket, carrying just the bar and the
+number. The column ends at x 284 and the rows start at 374, so nothing moved onto
+a lane, and "attack the core" became a drop onto the commander it belongs to.
+
+
 ## 13. Counter-protocols on the board
 
 Your own set counters are **not face down**. They are drawn as cards in the
@@ -644,7 +730,8 @@ Worth listing because "add juice" is a common answer to "what next", and most of
 | | |
 |---|---|
 | **Combat** | Lunge and recoil, curved targeting arrows, closing crosshair, hit flash, directional impact debris, ranged tracer beams, splash arcs, batched particle explosions. |
-| **Deployment** | Hex landing marker, squash-and-spring on landing, dust, stat-badge flare. |
+| **Deployment** | Hex landing marker, squash-and-spring on landing, stat-badge flare, then a landing signature that differs per doctrine — see below. |
+| **Drawing** | Each card arcs out of the draw pile at half size, grows to hand size, then pinches edge-on and opens out face-up in its slot. |
 | **Card spotlight** | Spells, counters and Titans slide in from their owner's side, hold ~1.1 s with a hologram scanline, then break into motes that drift to the scrap pile. Deliberately *not* fired for ordinary deployments. |
 | **Counter-protocols** | Alarm strobe, in-slot 3D card flip, then the spotlight. |
 | **Turn handover** | Full-width sweep banner across the board. |
