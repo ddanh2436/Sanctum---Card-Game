@@ -44,6 +44,29 @@ public:
     /// A rotating reticle over the frame an attack is aimed at.
     void crosshair(sf::Vector2f at, float seconds = 0.55f);
 
+    // ---- deployment signatures ---------------------------------------------
+    //
+    // Five primitives, not six bespoke effects. Each doctrine's landing is a
+    // recipe combining these with the spawners above, so a new doctrine costs a
+    // recipe rather than a new particle system, and tuning one primitive tunes
+    // every doctrine that uses it.
+
+    /// Ground splitting open under a heavy landing: branching fissures that
+    /// tear outward from `at` and fade.
+    void groundCracks(sf::Vector2f at, sf::Color colour, int spokes = 7,
+                      float reach = 74.0f, float seconds = 0.55f);
+    /// A shaft of light dropping from the top of the screen onto `at`.
+    void lightColumn(sf::Vector2f at, sf::Color colour, float width = 72.0f,
+                     float seconds = 0.30f);
+    /// Short static discharges snapping around a cell.
+    void boltRing(sf::Vector2f at, sf::Color colour, int count = 8,
+                  float radius = 58.0f, float seconds = 0.34f);
+    /// Light drifting down and swaying, for a landing that should feel weightless.
+    void feathers(sf::Vector2f at, sf::Color colour, int count = 8);
+    /// Fire thrown outward in a flat ring rather than a sphere - a shockwave
+    /// running along the ground instead of an explosion going up.
+    void emberRing(sf::Vector2f at, sf::Color hot, int count = 20);
+
     /// Squash a freshly landed frame and let it spring back, so a deployment
     /// reads as a heavy thing hitting the deck.
     void slam(int unitId);
@@ -109,6 +132,11 @@ private:
         float gravity = 0.0f;
         float drag = 1.0f;
         bool fade = true;
+        /// Horizontal sway, in pixels per second at full swing. Zero for
+        /// everything that falls or flies straight; non-zero is what makes a
+        /// feather read as a feather rather than as slow debris.
+        float sway = 0.0f;
+        float phase = 0.0f;
     };
 
     struct Ring {
@@ -190,6 +218,29 @@ private:
         float maxLife = 0.9f;
     };
 
+    /// Cracks are built once at spawn and then only faded: recomputing a random
+    /// branch every frame would make the ground crawl instead of split.
+    struct Fissure {
+        std::vector<sf::Vertex> lines;   // pairs, sf::Lines
+        float life = 0.0f;
+        float maxLife = 0.55f;
+    };
+
+    struct Column {
+        sf::Vector2f at;
+        sf::Color colour;
+        float width = 72.0f;
+        float life = 0.0f;
+        float maxLife = 0.30f;
+    };
+
+    struct Bolts {
+        std::vector<sf::Vertex> lines;   // pairs, sf::Lines
+        sf::Color colour;
+        float life = 0.0f;
+        float maxLife = 0.34f;
+    };
+
     std::vector<Particle> m_particles;
     std::vector<Ring> m_rings;
     std::vector<Beam> m_beams;
@@ -199,6 +250,9 @@ private:
     std::vector<DropMarker> m_markers;
     std::vector<TrapFlip> m_flips;
     std::vector<ArmFlare> m_armFlares;
+    std::vector<Fissure> m_fissures;
+    std::vector<Column> m_columns;
+    std::vector<Bolts> m_bolts;
     std::unordered_map<int, Slam> m_slams;
     std::unordered_map<int, Flash> m_flashes;
     std::unordered_map<int, Lunge> m_lunges;

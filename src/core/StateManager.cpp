@@ -6,6 +6,7 @@
 #include "rendering/CombatVFX.hpp"
 #include "rendering/MenuBackdrop.hpp"
 #include "rendering/EndScreen.hpp"
+#include "rendering/DeploySignature.hpp"
 #include "rendering/DrawFlight.hpp"
 #include "rendering/EndGameVFX.hpp"
 #include "rendering/PortraitRig.hpp"
@@ -3129,11 +3130,25 @@ void DuelState::consumeEvents() {
             }
             refreshRectCache();
             const sf::Vector2f at = centreOf(event.instanceId);
-            m_combat.shockwave(at, accentOf(event.instanceId), 96.0f, 0.62f);
+            // The beats every frame shares: it hits, it squashes, it flashes.
             m_combat.flash(event.instanceId, sf::Color(255, 255, 255, 140), 0.4f);
             m_combat.slam(event.instanceId);
-            m_combat.smoke(at, 14);
             m_combat.dropMarker(at, accentOf(event.instanceId));
+            // Then whatever this doctrine does that no other one does. The
+            // shared shockwave and dust moved in there: a Valkyrie settling and
+            // a Siege fortress arriving should not throw the same cloud.
+            if (const CardData* landed = DataLoader::findCard(event.cardId)) {
+                // The recipe asks for a shake; whether one happens is this
+                // layer's call, because the player can switch them off.
+                const DeploySignature::Shake shake =
+                    DeploySignature::play(m_combat, *landed, at, event.instanceId);
+                if (shake.wanted() && Settings::get().screenShake) {
+                    m_vfx.triggerScreenShake(shake.seconds, shake.amplitude);
+                }
+            } else {
+                m_combat.shockwave(at, accentOf(event.instanceId), 96.0f, 0.62f);
+                m_combat.smoke(at, 14);
+            }
 
             if (const Unit* landed = m_duel.board().findById(event.instanceId)) {
                 if (landed->data.tier == CardTier::Tier3) {

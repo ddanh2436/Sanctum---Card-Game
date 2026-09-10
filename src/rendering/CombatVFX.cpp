@@ -346,6 +346,129 @@ sf::Vector2f CombatVFX::offsetFor(int unitId) const {
 // Update
 // =============================================================================
 
+void CombatVFX::groundCracks(sf::Vector2f at, sf::Color colour, int spokes,
+                             float reach, float seconds) {
+    Fissure fissure;
+    fissure.maxLife = seconds;
+    fissure.life = seconds;
+
+    for (int i = 0; i < spokes; ++i) {
+        float angle = (i / static_cast<float>(spokes)) * 2.0f * kPi + frand(-0.22f, 0.22f);
+        sf::Vector2f cursor = at;
+
+        // Three kinked segments with one splinter each. A crack that runs dead
+        // straight reads as a drawn line; one that changes its mind reads as
+        // ground giving way.
+        for (int step = 0; step < 3; ++step) {
+            const float len = frand(reach * 0.30f, reach * 0.55f);
+            const sf::Vector2f next =
+                cursor + sf::Vector2f(std::cos(angle) * len, std::sin(angle) * len * 0.55f);
+
+            const float near = 1.0f - step / 3.0f;
+            sf::Color hot = colour;
+            hot.a = static_cast<sf::Uint8>(120 + 110 * near);
+            sf::Color cold = colour;
+            cold.a = static_cast<sf::Uint8>(40 + 70 * near);
+            fissure.lines.emplace_back(cursor, hot);
+            fissure.lines.emplace_back(next, cold);
+
+            if (step == 1) {
+                const float branch = angle + frand(-0.9f, 0.9f);
+                const float blen = len * 0.5f;
+                fissure.lines.emplace_back(next, cold);
+                fissure.lines.emplace_back(
+                    next + sf::Vector2f(std::cos(branch) * blen, std::sin(branch) * blen * 0.55f),
+                    sf::Color(colour.r, colour.g, colour.b, 0));
+            }
+            cursor = next;
+            angle += frand(-0.34f, 0.34f);
+        }
+    }
+    m_fissures.push_back(std::move(fissure));
+}
+
+void CombatVFX::lightColumn(sf::Vector2f at, sf::Color colour, float width, float seconds) {
+    Column column;
+    column.at = at;
+    column.colour = colour;
+    column.width = width;
+    column.maxLife = seconds;
+    column.life = seconds;
+    m_columns.push_back(column);
+}
+
+void CombatVFX::boltRing(sf::Vector2f at, sf::Color colour, int count,
+                         float radius, float seconds) {
+    Bolts bolts;
+    bolts.colour = colour;
+    bolts.maxLife = seconds;
+    bolts.life = seconds;
+
+    for (int i = 0; i < count; ++i) {
+        const float angle = (i / static_cast<float>(count)) * 2.0f * kPi + frand(-0.2f, 0.2f);
+        // Squashed on Y so the discharge hugs the cell rather than ringing it
+        // like a halo - the board is read as a floor, not as a wall.
+        const sf::Vector2f base(std::cos(angle) * radius, std::sin(angle) * radius * 0.55f);
+        sf::Vector2f cursor = at + base * 0.55f;
+
+        // Four steps at 0.30 of the radius each, not three at 0.18: the first
+        // version put out 30px stubs that read as specks beside a 112px unit
+        // tile rather than as discharge crawling round it.
+        for (int step = 0; step < 4; ++step) {
+            const sf::Vector2f jag(frand(-13.0f, 13.0f), frand(-10.0f, 10.0f));
+            const sf::Vector2f next = cursor + base * 0.30f + jag;
+            bolts.lines.emplace_back(cursor, colour);
+            bolts.lines.emplace_back(next, sf::Color(colour.r, colour.g, colour.b, 150));
+            cursor = next;
+        }
+    }
+    m_bolts.push_back(std::move(bolts));
+}
+
+void CombatVFX::feathers(sf::Vector2f at, sf::Color colour, int count) {
+    for (int i = 0; i < count; ++i) {
+        Particle p;
+        // Launched from above the cell, not from it: these fall past the frame
+        // that just landed rather than bursting out of it.
+        p.position = at + sf::Vector2f(frand(-46.0f, 46.0f), frand(-84.0f, -34.0f));
+        p.velocity = { frand(-14.0f, 14.0f), frand(28.0f, 58.0f) };
+        p.maxLife = frand(1.1f, 1.8f);
+        p.life = p.maxLife;
+        p.size = frand(3.0f, 6.0f);
+        p.gravity = 6.0f;      // barely any: they settle, they do not drop
+        p.drag = 0.995f;
+        p.sway = frand(22.0f, 46.0f);
+        p.phase = frand(0.0f, 6.28f);
+        p.colour = colour;
+        m_particles.push_back(p);
+    }
+}
+
+void CombatVFX::emberRing(sf::Vector2f at, sf::Color hot, int count) {
+    for (int i = 0; i < count; ++i) {
+        const float angle = (i / static_cast<float>(count)) * 2.0f * kPi + frand(-0.12f, 0.12f);
+        const float speed = frand(160.0f, 280.0f);
+
+        Particle p;
+        p.position = at;
+        // Flattened on Y for the same reason the bolts are: this is fire
+        // running out along the deck, not a fireball.
+        p.velocity = { std::cos(angle) * speed, std::sin(angle) * speed * 0.42f };
+        p.maxLife = frand(0.34f, 0.62f);
+        p.life = p.maxLife;
+        p.size = frand(3.0f, 7.0f);
+        p.gravity = 40.0f;
+        // Drag is applied per frame, not per second, so it compounds fast: at
+        // 0.90 the ring measured 42px across before it stopped, which is a
+        // puff rather than a shock front. 0.975 lets it actually travel.
+        p.drag = 0.975f;
+        p.colour = sf::Color(hot.r,
+                             static_cast<sf::Uint8>(std::min(255.0f, hot.g + frand(-30.0f, 60.0f))),
+                             static_cast<sf::Uint8>(std::max(0.0f, hot.b - frand(0.0f, 40.0f))));
+        m_particles.push_back(p);
+    }
+}
+
 void CombatVFX::update(float dt) {
     if (dt <= 0.0f) return;
 
@@ -357,11 +480,13 @@ void CombatVFX::update(float dt) {
             m_particles.pop_back();
             continue;
         }
+        p.phase += dt * 3.1f;
         p.velocity.y += p.gravity * dt;
         // Drag is applied per frame rather than per second; at the frame rates
         // this game runs the difference is not visible and this is cheaper.
         p.velocity *= p.drag;
         p.position += p.velocity * dt;
+        if (p.sway != 0.0f) p.position.x += std::sin(p.phase) * p.sway * dt;
         ++i;
     }
 
@@ -384,6 +509,9 @@ void CombatVFX::update(float dt) {
     tick(m_markers);
     tick(m_flips);
     tick(m_armFlares);
+    tick(m_fissures);
+    tick(m_columns);
+    tick(m_bolts);
 
     for (auto it = m_flashes.begin(); it != m_flashes.end();) {
         it->second.life -= dt;
@@ -421,6 +549,69 @@ void CombatVFX::clear() {
 // =============================================================================
 
 void CombatVFX::renderBelow(sf::RenderTarget& target) {
+    // The ground splitting, under everything: it is the floor.
+    for (const Fissure& f : m_fissures) {
+        const float t = f.life / f.maxLife;
+        // Drawn three times, offset by a pixel each way. sf::Lines are one
+        // pixel wide, which made a fissure read as a scratch rather than as
+        // ground opening up; three passes cost one more draw call and give the
+        // crack an edge without needing a quad per segment.
+        const sf::Vector2f nudges[3] = { { 0.0f, 0.0f }, { 0.0f, -1.0f }, { 1.0f, 1.0f } };
+        for (int pass = 0; pass < 3; ++pass) {
+            sf::VertexArray lines(sf::Lines, f.lines.size());
+            for (std::size_t i = 0; i < f.lines.size(); ++i) {
+                lines[i] = f.lines[i];
+                lines[i].position += nudges[pass];
+                lines[i].color.a = static_cast<sf::Uint8>(
+                    lines[i].color.a * t * (pass == 0 ? 1.0f : 0.55f));
+            }
+            target.draw(lines);
+        }
+    }
+
+    // Light shafts, additive, dropping from off the top of the screen. Drawn
+    // under the frames so the frame stands in the beam rather than behind it.
+    for (const Column& c : m_columns) {
+        const float t = c.life / c.maxLife;
+        const float head = c.at.y;
+        const float tail = c.at.y - (720.0f * (0.35f + 0.65f * t));
+
+        // Three nested wedges rather than one strip. A single quad rendered as
+        // a flat khaki bar with a hard edge down each side - no core, no
+        // falloff, and nothing that read as light. Stacking a wide faint wedge,
+        // a middling one and a narrow bright one gives the shaft a hot centre
+        // that fades outward, which is what a beam actually looks like.
+        struct Layer { float width; float alpha; };
+        const Layer layers[3] = { { 1.00f, 0.30f }, { 0.55f, 0.45f }, { 0.20f, 0.85f } };
+
+        for (const Layer& layer : layers) {
+            const float half = c.width * 0.5f * layer.width;
+            sf::VertexArray shaft(sf::TriangleStrip, 4);
+            const sf::Color top(c.colour.r, c.colour.g, c.colour.b, 0);
+            const sf::Color bottom(c.colour.r, c.colour.g, c.colour.b,
+                                   static_cast<sf::Uint8>(255.0f * layer.alpha * t));
+            // Narrow at the top, flaring where it meets the deck, so the shaft
+            // reads as pointing at the cell instead of passing through it.
+            shaft[0] = sf::Vertex({ c.at.x - half * 0.30f, tail }, top);
+            shaft[1] = sf::Vertex({ c.at.x + half * 0.30f, tail }, top);
+            shaft[2] = sf::Vertex({ c.at.x - half, head }, bottom);
+            shaft[3] = sf::Vertex({ c.at.x + half, head }, bottom);
+            target.draw(shaft, sf::BlendAdd);
+        }
+
+        // A pool of light where it lands, so the beam terminates on something.
+        sf::VertexArray pool(sf::TriangleFan, 20);
+        pool[0] = sf::Vertex(c.at, sf::Color(c.colour.r, c.colour.g, c.colour.b,
+                                             static_cast<sf::Uint8>(190 * t)));
+        for (int i = 1; i < 20; ++i) {
+            const float a = (i - 1) / 18.0f * 2.0f * kPi;
+            pool[i] = sf::Vertex(c.at + sf::Vector2f(std::cos(a) * c.width * 0.62f,
+                                                     std::sin(a) * c.width * 0.20f),
+                                 sf::Color(c.colour.r, c.colour.g, c.colour.b, 0));
+        }
+        target.draw(pool, sf::BlendAdd);
+    }
+
     // Beams first: a shot passes behind the frames it connects.
     for (const Beam& b : m_beams) {
         const float t = b.life / b.maxLife;
@@ -478,6 +669,18 @@ void CombatVFX::renderBelow(sf::RenderTarget& target) {
 }
 
 void CombatVFX::renderAbove(sf::RenderTarget& target) {
+    // Static discharge over the frame, additive: it is arcing off the armour,
+    // not lying on the deck behind it.
+    for (const Bolts& b : m_bolts) {
+        const float t = b.life / b.maxLife;
+        sf::VertexArray lines(sf::Lines, b.lines.size());
+        for (std::size_t i = 0; i < b.lines.size(); ++i) {
+            lines[i] = b.lines[i];
+            lines[i].color.a = static_cast<sf::Uint8>(lines[i].color.a * t);
+        }
+        target.draw(lines, sf::BlendAdd);
+    }
+
     // Slash arcs: a wedge swept across the point of contact.
     for (const Arc& a : m_arcs) {
         const float t = a.life / a.maxLife;
