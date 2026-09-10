@@ -122,9 +122,14 @@ void MenuBackdrop::render(sf::RenderTarget& target) {
         // sky barely moves; the character moves several times as far. Both the
         // drift and the breathing are safe here because each acts on its own
         // plane - the moon does not lurch when the figure leans.
+        // The sky is drawn WITHOUT the wind, on purpose. Rippling it moved the
+        // clouds and the moon's rim as much as it moved the hair - measured at
+        // 12.6 against the hair's 11.6 - which is the same "the whole picture is
+        // moving" fault as before, just wearing the background's clothes. A
+        // backdrop should hold still; only the figure is caught in the wind.
         placeCover(sprite, *m_sky, { m_smoothed.x * -4.0f, m_smoothed.y * -3.0f },
                    1.0f, kBleedLayered);
-        target.draw(sprite, wind);
+        target.draw(sprite);
 
         placeCover(sprite, *m_character,
                    { m_smoothed.x * -11.0f, m_smoothed.y * -7.0f + breathe * 2.0f },
