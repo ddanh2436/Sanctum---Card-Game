@@ -121,7 +121,10 @@ TrapTrigger parseTrapTrigger(const std::string& s) {
         { "OnEnemyHighTierDeploy",   TrapTrigger::OnEnemyHighTierDeploy },
         { "OnEnemyAdvance",          TrapTrigger::OnEnemyAdvance },
         { "OnAllyTargetedByRemoval", TrapTrigger::OnAllyTargetedByRemoval },
-        { "OnOwnTitanDestroyed",     TrapTrigger::OnOwnTitanDestroyed }
+        { "OnOwnTitanDestroyed",     TrapTrigger::OnOwnTitanDestroyed },
+        { "OnAllyDestroyed",         TrapTrigger::OnAllyDestroyed },
+        { "OnEnemyUnitAttack",       TrapTrigger::OnEnemyUnitAttack },
+        { "OnEnemyAerialAttack",     TrapTrigger::OnEnemyAerialAttack }
     };
     auto it = table.find(s);
     if (it == table.end()) {
@@ -138,6 +141,12 @@ TrapKind parseTrapKind(const std::string& s) {
         { "OverloadSummon",         TrapKind::OverloadSummon },
         { "WeakenAdvancingUnit",    TrapKind::WeakenAdvancingUnit },
         { "RecallTargetToHand",     TrapKind::RecallTargetToHand },
+        { "VentOverchargeAtReactor", TrapKind::VentOverchargeAtReactor },
+        { "BlindAttacker",           TrapKind::BlindAttacker },
+        { "ReassembleDyingAlly",     TrapKind::ReassembleDyingAlly },
+        { "LeechAndMend",            TrapKind::LeechAndMend },
+        { "MinefieldSplash",         TrapKind::MinefieldSplash },
+        { "ShootDownFlier",          TrapKind::ShootDownFlier },
         { "DetonateForTitanAttack", TrapKind::DetonateForTitanAttack }
     };
     auto it = table.find(s);

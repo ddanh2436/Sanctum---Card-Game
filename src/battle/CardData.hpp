@@ -115,7 +115,10 @@ enum class TrapTrigger {
     OnEnemyHighTierDeploy,  // the enemy deploys a Tier 2 or Tier 3 unit
     OnEnemyAdvance,         // an enemy unit moves up into the frontline
     OnAllyTargetedByRemoval,// a spell tries to destroy one of your units
-    OnOwnTitanDestroyed     // one of your own Tier 3 units is destroyed
+    OnOwnTitanDestroyed,    // one of your own Tier 3 units is destroyed
+    OnAllyDestroyed,        // any frame of yours is scrapped
+    OnEnemyUnitAttack,      // an enemy declares an attack on one of your frames
+    OnEnemyAerialAttack     // an enemy flier commits to a strike
 };
 
 enum class TrapKind {
@@ -124,7 +127,13 @@ enum class TrapKind {
     NegateSpellAndBurn,     // cancel the spell, burn the caster for its cost
     OverloadSummon,         // the deployed unit takes half its own attack
     WeakenAdvancingUnit,    // the advancing unit permanently loses value / value2
-    RecallTargetToHand,     // cancel the removal and return the unit to hand
+    RecallTargetToHand,
+    VentOverchargeAtReactor,// block `value`, then dump the whole core at their reactor
+    BlindAttacker,          // the attacker loses `value` attack and misses healthy targets
+    ReassembleDyingAlly,    // the frame is rebuilt at 1 health in the support row
+    LeechAndMend,           // drain `value` from the actor, mend every hurt ally by `value`
+    MinefieldSplash,        // `value` to the actor, `value2` to each frame beside it
+    ShootDownFlier,         // scrap a flier at or under `value` health, else break the strike     // cancel the removal and return the unit to hand
     DetonateForTitanAttack  // damage equal to the dead titan's attack, split
 };
 

@@ -87,6 +87,8 @@ public:
     static constexpr int kMeleeReach = 1;
     /// How far either side of itself an Intercept frame covers the sky.
     static constexpr int kInterceptReach = 1;
+    /// A blinded frame cannot connect with a target this healthy.
+    static constexpr int kBlindMissThreshold = 4;
     static constexpr int kOverchargePerStrike = 1;
     static constexpr int kOverchargeStrikeBonus = 2;
 

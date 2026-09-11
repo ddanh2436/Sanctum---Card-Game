@@ -67,19 +67,19 @@ const std::vector<Encounter>& RunState::path() {
           "assets/portraits/commander_choirbreaker.png" },
 
         { "The Pale Revenant", "She feeds her own frames to the core",
-          MechRole::Valkyrie, MechRole::Vanguard,      34, 1, DeckRules::kDeckSize, false,
+          MechRole::Valkyrie, MechRole::Vanguard,      44, 0, DeckRules::kDeckSize, false,
           "assets/portraits/commander_pale_sister.png" },
 
         { "Magistrate Vhal", "Her audit strips your frames while they still stand",
-          MechRole::Inquisitor, MechRole::Paladin,     38, 1, DeckRules::kDeckSize, false,
+          MechRole::Inquisitor, MechRole::Paladin,     36, 0, DeckRules::kDeckSize, false,
           "assets/portraits/commander_vhal.png" },
 
         { "Marshal Kaine", "Thunderlance doctrine, no survivors",
-          MechRole::Dragoon, MechRole::Siege,          46, 1, DeckRules::kDeckSize, false,
+          MechRole::Dragoon, MechRole::Siege,          38, 2, DeckRules::kDeckSize, false,
           "assets/portraits/commander_kaine.png" },
 
         { "Warden AX-7", "The line that has never been broken",
-          MechRole::Vanguard, MechRole::Valkyrie,      50, 2, DeckRules::kDeckSize, true,
+          MechRole::Vanguard, MechRole::Valkyrie,      36, 2, DeckRules::kDeckSize, true,
           "assets/portraits/commander_warden.png" },
     };
     return encounters;

@@ -226,13 +226,23 @@ three, and then opens the **Scrap Bay**, where one card may be removed from the 
 of the run. Losing ends the run — with a Retry option on the defeat screen that replays the same
 fight from the state it started in.
 
-| # | Commander | Doctrines | Reactor | Extra titans | AI win rate |
+| # | Commander | Doctrines | Reactor | Extra titans | Player win rate |
 |---|---|---|---|---|---|
-| 1 | Relaybreaker Gunline | Siege / Dragoon | 56 | 0 | 91% |
-| 2 | The Pale Revenant | Valkyrie / Vanguard | 34 | 1 | 51% |
-| 3 | Magistrate Vhal | Overseer / Arclight | 38 | 1 | 29% |
-| 4 | Marshal Kaine | Dragoon / Siege | 46 | 1 | 27% |
-| 5 | Warden AX-7 | Vanguard / Valkyrie | 50 | 2 | 20% |
+| 1 | Relaybreaker Gunline | Siege / Dragoon | 56 | 0 | 84% |
+| 2 | The Pale Revenant | Valkyrie / Vanguard | 44 | 0 | 82% |
+| 3 | Magistrate Vhal | Overseer / Arclight | 36 | 0 | 65% |
+| 4 | Marshal Kaine | Dragoon / Siege | 38 | 2 | 37% |
+| 5 | Warden AX-7 | Vanguard / Valkyrie | 36 | 2 | 22% |
+
+> **Retuned after the counter pass.** Filling in the three missing counter sets made several of
+> these commanders sharply stronger, and unevenly so: the curve went to 92/25/22/35/15, where
+> fight 4 was *easier* than fights 2 and 3. Four measured passes brought it back to a monotonic
+> descent.
+>
+> The tuning found one thing worth writing down: **an extra Titan is worth far more than reactor
+> health.** Taking the Titan off fight 2 moved it from 35% to 89%; adding eight reactor health
+> afterwards moved it back by three points. Titans are the coarse dial and the reactor is the
+> fine one, which is the opposite of how the table reads at a glance.
 
 The ladder is ordered by **measured** difficulty. `SanctumDuelSim` prints how hard every one of
 the thirty doctrine pairings is to face at a fixed reactor, and the five fights walk down that
@@ -342,15 +352,34 @@ Pick two; the primary grants the passive.
 | **OVERKILL** | Damage beyond what it takes to scrap the defender carries into the enemy reactor. |
 | **SPLASH** | The attack spills half its damage onto the frames flanking the target. |
 | **EMP** | Anything it hits is shorted out: cannot act next turn, and burns 1 health each upkeep until destroyed. |
+| **INTERCEPT** | Standing in the frontline, it covers its own lane and one either side. A flier attacking into a covered lane is shot for the interceptor's full attack **before** its own strike lands, and a flier shot down never lands that strike at all. |
+
+### Why Intercept exists
+
+Aerial was the one keyword with no answer on the board. It ignores the lane rules **and** Guard,
+so the only way to deal with a flier was to kill it on your own turn — which is a race, not
+counterplay.
+
+The lane an interceptor defends is the **target's**, not the attacker's: a flier crossing the
+board is engaged where it arrives, which is the lane the defender actually chose to cover.
+
+The AI scores it. Without that it flew Titans into a 4-attack turret every turn, which would have
+made Intercept read as a trap laid for the AI rather than as a rule of the game.
+
+> **A premise worth checking before nerfing Aerial.** Aerial is *not* the dominant mechanic. The
+> simulation's facing-difficulty table puts Dragoon pairings mid-table (36-37 per cent); the hardest decks
+> to face are the ones running **Overseer as the splash** — Siege/Overseer 15%, Valkyrie/Overseer
+> 18%, Arclight/Overseer 20%. Intercept was added because Aerial had no *counterplay*, not because
+> it had too high a win rate.
 
 ---
 
-## 10. Card catalogue — 74 cards, 201 copies
+## 10. Card catalogue — 93 cards, 239 copies
 
 Behaviour names are the C++ enum values. Each one is a distinct hand-written behaviour in the
 rules engine, not a generic effect.
 
-### Vanguard — 12 cards, 31 copies
+### Vanguard — 14 cards, 35 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -366,8 +395,10 @@ rules engine, not a generic effect.
 | `vg_ablative` | Ablative Plating | Spell | 4 | — | 3 | — | ArmourAllAllies 2 |
 | `vg_reactive` | Reactive Armor Protocol | Counter | 1 | — | 2 | — | On enemy reactor attack: BlockAndCrushWeak 3 |
 | `vg_lastline` | Last Line Detonation | Counter | 1 | — | 2 | — | On own Titan destroyed: DetonateForTitanAttack |
+| `vg_skyguard` | Skyguard Flak Drone | Unit T1 | 2 | 1/4 | 2 | taunt, intercept | — |
+| `vg_bastion_mk4` | Bastion MK-IV Sentinel | Unit T2 | 4 | 2/7 | 2 | taunt | Upkeep: RepairSelfEachTurn 2 |
 
-### Arclight — 11 cards, 30 copies
+### Arclight — 16 cards, 40 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -382,8 +413,13 @@ rules engine, not a generic effect.
 | `pl_overcharge` | Reactor Overcharge | Spell | 2 | — | 3 | — | OverchargeSurge 3 |
 | `pl_flare` | Plasma Flare | Spell | 3 | — | 3 | — | DamageEnemyFrontline 2 |
 | `pl_smite` | Orbital Strike | Spell | 4 | — | 2 | — | DamageEnemyFrontline 3 |
+| `pl_lightlance` | Lightlance Adept | Unit T2 | 4 | 3/4 | 2 | plasma | End of turn: SpendOverchargeToStrike 2 |
+| `pl_corona` | Blinding Corona | Counter | 1 | — | 2 | — | OnEnemyUnitAttack → BlindAttacker |
+| `pl_mirror` | Mirror Field | Counter | 1 | — | 2 | — | OnEnemySpellCast → NegateSpellAndBurn |
+| `pl_feedback` | Thermal Feedback | Counter | 1 | — | 2 | — | OnEnemyAttackReactor → VentOverchargeAtReactor |
+| `pl_lockout` | Flare Lockout | Counter | 2 | — | 2 | — | OnEnemyHighTierDeploy → OverloadSummon |
 
-### Valkyrie — 11 cards, 31 copies
+### Valkyrie — 16 cards, 41 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -398,8 +434,13 @@ rules engine, not a generic effect.
 | `vk_beacon` | Recovery Beacon | Spell | 2 | — | 3 | — | DrawThenRepairIfLosses 1 / 3 |
 | `vk_scrap` | Scrap Protocol | Spell | 3 | — | 3 | — | DrawThenRepairIfLosses 2 / 4 |
 | `vk_wash` | Nanite Wash | Spell | 3 | — | 3 | — | ArmourAllAllies 2 |
+| `vk_triage` | Triage Carrier | Unit T2 | 4 | 2/5 | 2 | — | End of turn: RepairReactor 2 |
+| `vk_reassembly` | Emergency Reassembly | Counter | 1 | — | 2 | — | OnAllyDestroyed → ReassembleDyingAlly |
+| `vk_recall` | Emergency Recall | Counter | 1 | — | 2 | — | OnAllyTargetedByRemoval → RecallTargetToHand |
+| `vk_leech` | Nanite Leech Field | Counter | 1 | — | 2 | — | OnEnemyHighTierDeploy → LeechAndMend |
+| `vk_blackbox` | Black Box Protocol | Counter | 2 | — | 2 | — | OnOwnTitanDestroyed → DetonateForTitanAttack |
 
-### Dragoon — 15 cards, 41 copies
+### Dragoon — 16 cards, 43 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -418,8 +459,9 @@ rules engine, not a generic effect.
 | `dg_afterburn` | Afterburn Strike | Spell | 4 | — | 2 | — | DestroyHighAttackEnemy 5 |
 | `dg_evasion` | Thruster Evasion | Counter | 1 | — | 3 | — | On ally targeted by removal: RecallTargetToHand |
 | `dg_veer` | Veer Off | Counter | 1 | — | 3 | — | On enemy advance: WeakenAdvancingUnit 1 / 1 |
+| `dg_strafe_wing` | Ashfall Strafe Wing | Unit T2 | 5 | 3/4 | 2 | aerial | Deploy: DamageEnemyFrontline 2 |
 
-### Siege — 11 cards, 30 copies
+### Siege — 17 cards, 42 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -434,6 +476,12 @@ rules engine, not a generic effect.
 | `sg_entrench` | Entrenchment | Spell | 2 | — | 3 | — | ArmourAllAllies 2 |
 | `sg_barrage` | Suppressing Barrage | Spell | 3 | — | 3 | — | DamageEnemyFrontline 2 |
 | `sg_orbital` | Orbital Bombardment | Spell | 4 | — | 2 | — | WipeLowHealthUnits 2 — hits both sides |
+| `sg_bulwark_array` | Ablative Bulwark Array | Unit T2 | 3 | 1/6 | 2 | — | Field: AuraArmourFrontline 1 |
+| `sg_flakturret` | Flak Interception Turret | Unit T1 | 3 | 2/4 | 2 | intercept | — |
+| `sg_flakscreen` | Flak Interception | Counter | 1 | — | 2 | — | OnEnemyAerialAttack → ShootDownFlier |
+| `sg_tripwire` | Perimeter Minefield | Counter | 1 | — | 2 | — | OnEnemyAdvance → MinefieldSplash |
+| `sg_minefield` | Pre-Ranged Minefield | Counter | 1 | — | 2 | — | OnEnemyAdvance → WeakenAdvancingUnit |
+| `sg_counterfire` | Counter-Battery Fire | Counter | 2 | — | 2 | — | OnEnemyAttackReactor → BlockAndCrushWeak |
 
 ### Overseer — 14 cards, 38 copies
 
@@ -634,6 +682,35 @@ a lane, and "attack the core" became a drop onto the commander it belongs to.
 
 
 ## 13. Counter-protocols on the board
+
+### Every doctrine carries counters, and each set answers a different question
+
+Arclight, Siege and Valkyrie carried **no counters at all** until recently, so six of the thirty
+ordered core pairings could field a deck with zero while the other twenty-four fielded four — the
+counter subsystem simply did not exist for those players. The first fix gave them two each, but
+built from the `TrapKind`s that already existed, which made every doctrine's counters mechanical
+reskins of another's. They are distinct behaviours now.
+
+| Doctrine | Counter | Window | What it does |
+|---|---|---|---|
+| **Arclight** | Thermal Feedback | reactor struck | Blocks the strike, then empties the whole Overcharge core into *their* reactor |
+| **Arclight** | Blinding Corona | a frame of yours is attacked | The attacker swings for 3 less and **cannot connect with a target on 4+ health** |
+| **Valkyrie** | Emergency Reassembly | a frame of yours is scrapped | Rebuilds it at 1 health in your support row |
+| **Valkyrie** | Nanite Leech Field | a heavy frame lands | Drains 2 from it and mends every hurt frame of yours by 2 |
+| **Siege** | Perimeter Minefield | an enemy advances | 3 to the advancer, 1 to each frame beside it |
+| **Siege** | Flak Interception | an enemy flier strikes | Scraps it at 3 or less health, otherwise grounds it — either way the strike is lost |
+
+Three new windows were needed: `OnAllyDestroyed`, `OnEnemyUnitAttack` and `OnEnemyAerialAttack`.
+
+Two notes on how they were built rather than what they do:
+
+- **Emergency Reassembly rebuilds rather than cancels.** By the time deaths resolve the frame is
+  already off the board, so intercepting the kill would mean a hook inside the death pipeline.
+  Rebuilding it at 1 health in the support row is the same outcome with no such hook — and if the
+  support row is full the counter is spent and the frame still dies, which is honest rather than
+  silently free.
+- **Blinding Corona is a lasting state, not a one-shot reduction.** `Unit::blindTurns` and
+  `blindPenalty` burn off at the frame's own upkeep, exactly where stun already does.
 
 Your own set counters are **not face down**. They are drawn as cards in the
 counter zone — art, name, doctrine tint — and either mouse button opens the full

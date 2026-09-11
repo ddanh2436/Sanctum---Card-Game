@@ -35,6 +35,10 @@ struct Unit {
 
     int armour = 0;        // temporary, expires at your next upkeep
     int stunTurns = 0;     // cannot attack or advance while positive
+    /// Blinding Corona: for this many of its own turns the frame swings for
+    /// `blindPenalty` less and cannot connect with a healthy target at all.
+    int blindTurns = 0;
+    int blindPenalty = 0;
     bool shorted = false;  // EMP burn: loses 1 health at the start of each of your turns
     bool wardOff = false;  // cannot be destroyed by spells or traps (aura granted)
 

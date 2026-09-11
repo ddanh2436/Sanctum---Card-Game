@@ -987,6 +987,126 @@ void test_detonation_hits_the_killer() {
     std::cout << "[PASS] test_detonation_hits_the_killer\n";
 }
 
+/// The six doctrine counters. Each one is a different SHAPE of answer, which is
+/// the point of them - the previous set were six reskins of three effects.
+void test_the_doctrine_counters_each_do_their_own_thing() {
+    // --- Flak Interception: scraps a light flier, grounds a heavy one -------
+    {
+        DuelEngine duel;
+        CardData flak = trapCard("flak", TrapTrigger::OnEnemyAerialAttack,
+                                 TrapKind::ShootDownFlier, 3);
+        CardData flyer = unitCard("flyer", 1, 4, 3, Keyword::Aerial | Keyword::Rush);
+        startNeutral(duel, flak, flyer);
+
+        CHECK(duel.setTrap(Side::Player, 0) == ActionResult::Ok);
+        duel.endTurn();
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        const int flyerId = duel.board().units(Side::Opponent).front()->instanceId;
+        const int myHp = duel.commander(Side::Player).getHp();
+
+        CHECK(duel.declareAttack(Side::Opponent, flyerId, -1) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(flyerId) == nullptr, "a 3 health flier survived the flak");
+        CHECK_MSG(duel.commander(Side::Player).getHp() == myHp, "the downed flier still hit");
+    }
+    {
+        DuelEngine duel;
+        CardData flak = trapCard("flak", TrapTrigger::OnEnemyAerialAttack,
+                                 TrapKind::ShootDownFlier, 3);
+        CardData heavy = unitCard("heavy", 1, 4, 7, Keyword::Aerial | Keyword::Rush);
+        startNeutral(duel, flak, heavy);
+
+        CHECK(duel.setTrap(Side::Player, 0) == ActionResult::Ok);
+        duel.endTurn();
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        const int heavyId = duel.board().units(Side::Opponent).front()->instanceId;
+        const int myHp = duel.commander(Side::Player).getHp();
+
+        CHECK(duel.declareAttack(Side::Opponent, heavyId, -1) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(heavyId) != nullptr, "a 7 health flier was scrapped");
+        CHECK_MSG(duel.commander(Side::Player).getHp() == myHp, "the grounded flier still hit");
+    }
+
+    // --- Perimeter Minefield: the advancer and both neighbours --------------
+    {
+        DuelEngine duel;
+        CardData mine = trapCard("mine", TrapTrigger::OnEnemyAdvance,
+                                 TrapKind::MinefieldSplash, 3, 1);
+        CardData body = unitCard("body", 1, 1, 8);
+        startNeutral(duel, mine, body);
+
+        CHECK(duel.setTrap(Side::Player, 0) == ActionResult::Ok);
+        duel.endTurn();
+
+        reachEnergy(duel, Side::Opponent, 3);
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Support, 1) == ActionResult::Ok);
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        duel.endTurn();
+        duel.endTurn();
+
+        const Unit* rear = duel.board().at(Side::Opponent, BoardLine::Support, 1);
+        CHECK(rear != nullptr);
+        const int rearId = rear->instanceId;
+        const int flankId = duel.board().at(Side::Opponent, BoardLine::Frontline, 0)->instanceId;
+
+        CHECK(duel.advanceUnit(Side::Opponent, rearId) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(rearId)->damage == 3, "the advancer took no mine");
+        CHECK_MSG(duel.board().findById(flankId)->damage == 1, "the splash missed the neighbour");
+    }
+
+    // --- Emergency Reassembly: the frame comes back at 1 health -------------
+    {
+        DuelEngine duel;
+        CardData rebuild = trapCard("rebuild", TrapTrigger::OnAllyDestroyed,
+                                    TrapKind::ReassembleDyingAlly);
+        CardData victim = unitCard("victim", 1, 1, 2);
+        CardData killer = unitCard("killer", 1, 6, 6, Keyword::Rush);
+        startNeutral(duel, rebuild, killer);
+
+        CHECK(duel.setTrap(Side::Player, 0) == ActionResult::Ok);
+        reachEnergy(duel, Side::Player, 2);
+        giveCard(duel, Side::Player, victim);
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        duel.endTurn();
+
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        const int killerId = duel.board().units(Side::Opponent).front()->instanceId;
+        const int victimId = duel.board().unitsIn(Side::Player, BoardLine::Frontline).front()->instanceId;
+
+        CHECK(duel.declareAttack(Side::Opponent, killerId, victimId) == ActionResult::Ok);
+        const auto rebuilt = duel.board().unitsIn(Side::Player, BoardLine::Support);
+        CHECK_MSG(rebuilt.size() == 1, "the frame was not reassembled");
+        CHECK_MSG(rebuilt.front()->health() == 1, "it came back on the wrong health");
+    }
+
+    // --- Blinding Corona: swings short, misses anything healthy ------------
+    {
+        DuelEngine duel;
+        CardData corona = trapCard("corona", TrapTrigger::OnEnemyUnitAttack,
+                                   TrapKind::BlindAttacker, 3);
+        CardData tough = unitCard("tough", 1, 1, 9);
+        CardData swinger = unitCard("swinger", 1, 5, 9, Keyword::Rush);
+        startNeutral(duel, corona, swinger);
+
+        CHECK(duel.setTrap(Side::Player, 0) == ActionResult::Ok);
+        reachEnergy(duel, Side::Player, 2);
+        giveCard(duel, Side::Player, tough);
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        duel.endTurn();
+
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        const int swingerId = duel.board().units(Side::Opponent).front()->instanceId;
+        const int toughId = duel.board().unitsIn(Side::Player, BoardLine::Frontline).front()->instanceId;
+
+        // The counter fires on the declaration, so this very swing is blinded
+        // and finds a 9 health target - it misses outright.
+        CHECK(duel.declareAttack(Side::Opponent, swingerId, toughId) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(toughId)->damage == 0, "a blinded swing still connected");
+        CHECK_MSG(duel.board().findById(swingerId)->blindTurns > 0, "the attacker was not blinded");
+    }
+
+    std::cout << "[PASS] test_the_doctrine_counters_each_do_their_own_thing\n";
+}
+
 void test_aura_applies_and_expires() {
     DuelEngine duel;
     CardData grunt = unitCard("grunt", 1, 1, 1);
@@ -1199,6 +1319,7 @@ int main() {
     test_overload_virus_punishes_a_big_deployment();
     test_grid_snare_weakens_an_advancing_frame();
     test_detonation_hits_the_killer();
+    test_the_doctrine_counters_each_do_their_own_thing();
     test_aura_applies_and_expires();
     test_duel_ends_when_a_reactor_falls();
     test_deck_rules_reject_illegal_configurations();

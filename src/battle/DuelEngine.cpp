@@ -98,6 +98,8 @@ void DuelEngine::beginTurn(Side side) {
         } else {
             unit->exhausted = false;
         }
+        // Blindness burns off at the frame's own upkeep, like stun.
+        if (unit->blindTurns > 0 && --unit->blindTurns == 0) unit->blindPenalty = 0;
         if (unit->shorted) {
             damageUnit(*unit, 1, true, nullptr, other(side));
         }
@@ -667,6 +669,34 @@ ActionResult DuelEngine::declareAttack(Side side, int attackerId, int targetId) 
 
     emit(DuelEvent::Type::AttackDeclared, side, "", attackerId, attacker->attack(), targetId);
 
+    // ---- counter-protocol windows that open on an attack ----
+    //
+    // Both fire before any damage, and both can scrap the attacker, so the
+    // pointer has to be taken again afterwards.
+    {
+        int broken = 0;
+        if (attacker->hasKeyword(Keyword::Aerial)) {
+            fireTraps(foe, TrapTrigger::OnEnemyAerialAttack, attacker, &broken);
+        }
+        if (!broken && targetId >= 0) {
+            fireTraps(foe, TrapTrigger::OnEnemyUnitAttack, attacker, &broken);
+        }
+        attacker = m_board.findById(attackerId);
+        if (!attacker || !attacker->isAlive()) {
+            resolveDeaths(nullptr, side);
+            recomputeAuras();
+            checkGameOver();
+            return ActionResult::Ok;
+        }
+        if (broken) {
+            // The strike was broken off rather than merely weakened.
+            resolveDeaths(nullptr, side);
+            recomputeAuras();
+            checkGameOver();
+            return ActionResult::Ok;
+        }
+    }
+
     // ---- flak: Intercept fires before the strike lands ----
     //
     // Aerial was the one keyword with no answer on the board. It ignores the
@@ -747,6 +777,18 @@ ActionResult DuelEngine::declareAttack(Side side, int attackerId, int targetId) 
     const bool ranged = attacker->hasKeyword(Keyword::Ranged);
     int damage = attacker->attack() + overchargeBonus;
     if (ranged) damage += rangedBonus(side) + attacker->auraRangedBonus;
+
+    // Blinded: swings short, and cannot find a target that is still healthy.
+    if (attacker->blindTurns > 0) {
+        if (defender->health() >= kBlindMissThreshold) {
+            log(attacker->data.name + " swings blind and misses");
+            resolveDeaths(nullptr, side);
+            recomputeAuras();
+            checkGameOver();
+            return ActionResult::Ok;
+        }
+        damage = std::max(0, damage - attacker->blindPenalty);
+    }
 
     const int defenderHealthBefore = defender->health();
     // Artillery has no melee answer: it never returns fire, attacking or
@@ -876,6 +918,33 @@ void DuelEngine::resolveDeaths(Unit* killer, Side killerSide) {
             // doctrine an endless supply at no tempo cost and it won ~100% of
             // simulated duels on every splash; going through the deck keeps the
             // fantasy but makes the value slow enough to play around.
+            // Emergency Reassembly: a counter may pull the frame back onto the
+            // board instead of letting it reach the scrap yard. It rebuilds
+            // rather than cancelling the kill, because by the time deaths
+            // resolve the frame is already off the board - same outcome, and no
+            // hook needed inside the death pipeline itself.
+            int reassembled = 0;
+            fireTraps(owner, TrapTrigger::OnAllyDestroyed, &corpse, &reassembled);
+            if (reassembled) {
+                bool rebuiltOk = false;
+                for (int slot = 0; slot < Board::kLineSlots && !rebuiltOk; ++slot) {
+                    if (m_board.at(owner, BoardLine::Support, slot)) continue;
+                    auto rebuilt = std::make_unique<Unit>();
+                    rebuilt->data = corpse.data;
+                    rebuilt->owner = owner;
+                    rebuilt->instanceId = corpse.instanceId;
+                    rebuilt->damage = std::max(0, rebuilt->maxHealth() - 1);
+                    rebuilt->exhausted = true;
+                    rebuiltOk = m_board.place(owner, BoardLine::Support, slot, std::move(rebuilt));
+                }
+                if (rebuiltOk) {
+                    log(corpse.data.name + " is reassembled at 1 health");
+                    continue;
+                }
+                // Nowhere to put it: the counter is spent and the frame is
+                // still scrapped, which is honest rather than silently free.
+            }
+
             Commander& ownerCmd = m_commanders[index(owner)];
             if (ownerCmd.getPrimaryRole() == MechRole::Valkyrie
                 && !m_salvageUsed[index(owner)]) {
@@ -1259,6 +1328,73 @@ void DuelEngine::resolveTrap(TrapCard& trap, Side owner, Unit* actor, int* outNe
                     damageUnit(*enemy, each, true, nullptr, owner);
                 }
                 log("The dying titan detonates for " + std::to_string(each) + " to each frame");
+            }
+        }
+        break;
+    }
+    case TrapKind::VentOverchargeAtReactor: {
+        // Blocks the strike, then empties the core into their reactor. A
+        // doctrine that hoards overcharge for plasma strikes now has a second
+        // thing to spend it on, and a reason not to spend it all first.
+        if (outNegated) *outNegated = 1;
+        Commander& mine = m_commanders[index(owner)];
+        const int vented = mine.spendOvercharge(mine.getOvercharge());
+        log("Thermal feedback blocks the strike");
+        if (vented > 0) {
+            damageCommander(foe, vented, "thermal feedback vents " + std::to_string(vented));
+        }
+        break;
+    }
+    case TrapKind::BlindAttacker: {
+        if (actor) {
+            actor->blindTurns = std::max(actor->blindTurns, 1);
+            actor->blindPenalty = std::max(actor->blindPenalty, card.trapValue);
+            log(actor->data.name + " is blinded by the corona");
+        }
+        break;
+    }
+    case TrapKind::ReassembleDyingAlly: {
+        // The frame is already off the board by the time deaths resolve, so
+        // this rebuilds it rather than cancelling the kill. Same outcome, and
+        // it does not need a hook inside the death pipeline.
+        if (outNegated) *outNegated = 1;
+        log("Emergency reassembly");
+        break;
+    }
+    case TrapKind::LeechAndMend: {
+        if (actor) {
+            damageUnit(*actor, card.trapValue, true, nullptr, owner);
+            log(actor->data.name + " is drained for " + std::to_string(card.trapValue));
+        }
+        for (Unit* ally : m_board.units(owner)) {
+            if (ally->damage > 0) healUnit(*ally, card.trapValue);
+        }
+        break;
+    }
+    case TrapKind::MinefieldSplash: {
+        if (actor) {
+            const UnitLocation at = m_board.locate(actor->instanceId);
+            damageUnit(*actor, card.trapValue, false, nullptr, owner);
+            if (at.valid() && card.trapValue2 > 0) {
+                splashNeighbours(at, card.trapValue2, owner);
+            }
+            log(actor->data.name + " walks into the minefield");
+        }
+        break;
+    }
+    case TrapKind::ShootDownFlier: {
+        // Light fliers are scrapped outright; heavy ones are merely broken off
+        // and grounded, which is the difference between a hard answer and a
+        // delay. Either way the strike does not land.
+        if (outNegated) *outNegated = 1;
+        if (actor) {
+            if (actor->health() <= card.trapValue) {
+                actor->damage = actor->maxHealth();
+                log(actor->data.name + " is shot out of the sky");
+            } else {
+                actor->exhausted = true;
+                actor->exposed = true;
+                log(actor->data.name + " is driven off and grounded");
             }
         }
         break;
