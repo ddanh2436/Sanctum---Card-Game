@@ -38,3 +38,7 @@ rules.txt
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Player-built decks, written beside the executable at runtime.
+custom_decks.json
+test_custom_decks.json

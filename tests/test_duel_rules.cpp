@@ -3,8 +3,11 @@
 #include "TestAssert.hpp"
 #include "battle/DuelEngine.hpp"
 #include "run/DeckBuilder.hpp"
+#include "run/DeckStore.hpp"
 #include "utils/DataLoader.hpp"
 #include "utils/Rng.hpp"
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 
 namespace {
@@ -93,6 +96,56 @@ void reachEnergy(DuelEngine& duel, Side side, int cap) {
         if (duel.activeSide() == side && duel.commander(side).getManaCap() >= cap) return;
         duel.endTurn();
     }
+}
+
+
+/// A saved deck has to survive a round trip through the file, and a saved deck
+/// that no longer matches the catalogue has to fall back rather than hand the
+/// duel a deck with holes in it. Both matter because this file outlives the
+/// version of the game that wrote it.
+void test_saved_decks_round_trip_and_fall_back() {
+    const char* path = "test_custom_decks.json";
+    std::remove(path);
+
+    const DeckConfiguration generated = DeckBuilder::build(MechRole::Vanguard, MechRole::Siege);
+    CHECK(generated.isValidDeck());
+
+    DeckStore::load(path);
+    DeckStore::store(MechRole::Vanguard, MechRole::Siege, generated.cards);
+
+    const DeckStore::SavedDeck* saved = DeckStore::find(MechRole::Vanguard, MechRole::Siege);
+    CHECK(saved != nullptr);
+    CHECK(static_cast<int>(saved->cardIds.size()) == DeckRules::kDeckSize);
+
+    const DeckConfiguration restored =
+        DeckStore::configurationFor(MechRole::Vanguard, MechRole::Siege);
+    CHECK(restored.isValidDeck());
+    CHECK(static_cast<int>(restored.cards.size()) == DeckRules::kDeckSize);
+    for (std::size_t i = 0; i < restored.cards.size(); ++i) {
+        CHECK(restored.cards[i].id == generated.cards[i].id);
+    }
+
+    // A pair the player never touched still gets the generated deck.
+    const DeckConfiguration untouched =
+        DeckStore::configurationFor(MechRole::Dragoon, MechRole::Valkyrie);
+    CHECK(untouched.isValidDeck());
+    CHECK(DeckStore::find(MechRole::Dragoon, MechRole::Valkyrie) == nullptr);
+
+    // Now break it the way a catalogue change would: an id that no longer
+    // exists. The deck comes back short, fails validation, and the generated
+    // deck has to take over.
+    std::vector<CardData> broken = generated.cards;
+    broken.resize(broken.size() - 3);
+    DeckStore::store(MechRole::Vanguard, MechRole::Siege, broken);
+    const DeckConfiguration fallback =
+        DeckStore::configurationFor(MechRole::Vanguard, MechRole::Siege);
+    CHECK(fallback.isValidDeck());
+    CHECK(static_cast<int>(fallback.cards.size()) == DeckRules::kDeckSize);
+
+    DeckStore::clear(MechRole::Vanguard, MechRole::Siege);
+    CHECK(DeckStore::find(MechRole::Vanguard, MechRole::Siege) == nullptr);
+    std::remove(path);
+    std::printf("[PASS] test_saved_decks_round_trip_and_fall_back\n");
 }
 
 } // namespace
@@ -1061,6 +1114,7 @@ int main() {
     test_deck_rules_reject_illegal_configurations();
     test_every_pairing_builds_a_legal_deck();
     test_catalogue_loads_and_is_coherent();
+    test_saved_decks_round_trip_and_fall_back();
 
     std::cout << "========================================\n";
     std::cout << " ALL DUEL RULES TESTS PASSED\n";

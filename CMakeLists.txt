@@ -61,6 +61,7 @@ set(SANCTUM_CORE_SOURCES
     src/battle/DuelEngine.cpp
     src/battle/AICommander.cpp
     src/run/DeckBuilder.cpp
+    src/run/DeckStore.cpp
     src/run/RunState.cpp
     src/utils/Avatars.cpp
     src/utils/DataLoader.cpp
@@ -90,6 +91,7 @@ set(SANCTUM_CORE_HEADERS
     src/battle/DuelEngine.hpp
     src/battle/AICommander.hpp
     src/run/DeckBuilder.hpp
+    src/run/DeckStore.hpp
     src/run/RunState.hpp
     src/rendering/HolyVFX.hpp
     src/rendering/CardArt.hpp

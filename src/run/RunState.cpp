@@ -1,4 +1,6 @@
 #include "run/RunState.hpp"
+
+#include "run/DeckStore.hpp"
 #include "battle/Commander.hpp"
 #include "utils/DataLoader.hpp"
 #include "utils/Rng.hpp"
@@ -83,7 +85,10 @@ const std::vector<Encounter>& RunState::path() {
 void RunState::startNewRun(MechRole primary, MechRole secondary) {
     m_encounter = 0;
     m_commanderHp = Commander::kStartingHp;
-    m_config = DeckBuilder::build(primary, secondary);
+    // The player's own deck for this pair when they have built one, otherwise
+    // the generated deck. configurationFor() falls back on its own if a saved
+    // deck no longer passes the rules.
+    m_config = DeckStore::configurationFor(primary, secondary);
 }
 
 const Encounter& RunState::currentEncounter() const {
