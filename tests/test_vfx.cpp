@@ -8,6 +8,7 @@
 #include "TestAssert.hpp"
 #include "rendering/CardArt.hpp"
 #include "rendering/CombatVFX.hpp"
+#include "utils/Rng.hpp"
 #include "rendering/DeploySignature.hpp"
 #include "rendering/DrawFlight.hpp"
 
@@ -290,11 +291,19 @@ void test_a_batch_is_staggered_not_stacked() {
 // ---------------------------------------------------------------------------
 
 /// Render one spawner into a fresh target `seconds` after it fired.
+/// Every effect in here spawns from Rng, so two renders of "the same" effect
+/// are two different populations unless the generator is put back first. The
+/// feather test compared an early frame of one random set against a late frame
+/// of ANOTHER, which is not a measurement of drift at all - it red-lit the build
+/// roughly one run in four, entirely on the draw.
+constexpr unsigned int kVfxSeed = 20250911u;
+
 bool renderPrimitive(const std::function<void(CombatVFX&)>& spawn, float seconds,
                      sf::Image& out, unsigned w = 320, unsigned h = 320) {
     sf::RenderTexture target;
     if (!target.create(w, h)) return false;
 
+    Rng::seed(kVfxSeed);
     CombatVFX vfx;
     spawn(vfx);
     for (float t = 0.0f; t < seconds; t += 0.01f) vfx.update(0.01f);
