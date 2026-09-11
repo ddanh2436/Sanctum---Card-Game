@@ -34,7 +34,8 @@ Keyword::Mask parseKeyword(const std::string& s) {
         { "ranged",   Keyword::Ranged },   { "reactive", Keyword::Reactive },
         { "overkill", Keyword::Overkill }, { "plasma",   Keyword::Plasma },
         { "emp",      Keyword::EMP },      { "aerial",   Keyword::Aerial },
-        { "splash",   Keyword::Splash },   { "thruster", Keyword::Thruster }
+        { "splash",   Keyword::Splash },   { "thruster", Keyword::Thruster },
+        { "intercept", Keyword::Intercept }
     };
     auto it = table.find(s);
     if (it == table.end()) {

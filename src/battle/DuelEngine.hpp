@@ -85,6 +85,8 @@ public:
     static constexpr int kOverchargePerUpkeep = 2;
     /// How many lanes either side a melee frame can swing into.
     static constexpr int kMeleeReach = 1;
+    /// How far either side of itself an Intercept frame covers the sky.
+    static constexpr int kInterceptReach = 1;
     static constexpr int kOverchargePerStrike = 1;
     static constexpr int kOverchargeStrikeBonus = 2;
 
@@ -114,6 +116,18 @@ public:
     bool isScreened(const UnitLocation& where) const;
     /// True when neither row of `side` holds anything in lane `slot`.
     bool laneIsOpen(Side side, int slot) const;
+    /**
+     * Flak. Returns the interceptor that fires on an incoming Aerial strike,
+     * or nullptr when the sky over that lane is clear.
+     *
+     * Aerial was the one keyword with no answer on the board: it ignores the
+     * lane rules AND Guard, so the only counterplay was to kill the flier on
+     * your own turn. Intercept gives the defender something that has to be
+     * played around instead.
+     */
+    Unit* interceptorFor(Side defender, int lane);
+    /// Read-only view of the same lookup, for the AI's attack scoring.
+    const Unit* interceptorOver(Side defender, int lane) const;
     /// Energy this side pays to advance right now (Thruster / Dragoon make it free).
     int advanceCost(int unitId) const;
 

@@ -168,6 +168,7 @@ std::string keywordLine(const CardData& card) {
     add(Keyword::Rush, "BLITZ");
     add(Keyword::Aerial, "AERIAL");
     add(Keyword::Thruster, "THRUSTER");
+    add(Keyword::Intercept, "INTERCEPT");
     add(Keyword::Reactive, "REACTIVE");
     add(Keyword::Overkill, "OVERKILL");
     add(Keyword::Plasma, "PLASMA");

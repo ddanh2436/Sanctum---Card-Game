@@ -1426,6 +1426,39 @@
    "trapValue": 3,
    "description": "COUNTER - when a heavy frame lands:\noverload it for 3 damage.",
    "textureFile": "assets/cards/pl_lockout.png"
+  },
+  {
+   "id": "vg_skyguard",
+   "name": "Skyguard Flak Drone",
+   "role": "Vanguard",
+   "category": "Unit",
+   "tier": 1,
+   "manaCost": 2,
+   "attack": 1,
+   "health": 4,
+   "deckCount": 2,
+   "keywords": [
+    "taunt",
+    "intercept"
+   ],
+   "description": "Guard: screens the frames beside it.\nIntercept: shoots down fliers crossing its lanes.",
+   "textureFile": "assets/cards/vg_skyguard.png"
+  },
+  {
+   "id": "sg_flakturret",
+   "name": "Flak Interception Turret",
+   "role": "Siege",
+   "category": "Unit",
+   "tier": 1,
+   "manaCost": 3,
+   "attack": 2,
+   "health": 4,
+   "deckCount": 2,
+   "keywords": [
+    "intercept"
+   ],
+   "description": "Intercept: shoots down fliers\ncrossing its lanes.",
+   "textureFile": "assets/cards/sg_flakturret.png"
   }
  ]
 }

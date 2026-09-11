@@ -424,6 +424,81 @@ void test_aerial_strikes_past_the_line_but_guard_still_holds() {
     std::cout << "[PASS] test_aerial_strikes_past_the_line_but_guard_still_holds\n";
 }
 
+/// Intercept is Aerial's answer. A flier crossing a covered lane is shot at
+/// before its own strike lands, and a flier shot down never lands it at all.
+void test_intercept_shoots_down_fliers_crossing_its_lanes() {
+    {
+        DuelEngine duel;
+        // 2 attack flak against a 3 health flier: survives, but bloodied.
+        CardData flak = unitCard("flak", 1, 2, 5, Keyword::Intercept);
+        CardData flyer = unitCard("flyer", 1, 4, 3, Keyword::Aerial | Keyword::Rush);
+        startNeutral(duel, flak, flyer);
+
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 1) == ActionResult::Ok);
+        reachEnergy(duel, Side::Player, 2);
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Support, 2) == ActionResult::Ok);
+        duel.endTurn();
+
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 2) == ActionResult::Ok);
+        const int flyerId = duel.board().units(Side::Opponent).front()->instanceId;
+        const Unit* rear = duel.board().unitsIn(Side::Player, BoardLine::Support).front();
+        const int rearId = rear->instanceId;
+
+        // The flak sits in lane 1; the target is in lane 2, one lane over, so
+        // the sky above it is covered.
+        CHECK(duel.declareAttack(Side::Opponent, flyerId, rearId) == ActionResult::Ok);
+        const Unit* flown = duel.board().findById(flyerId);
+        CHECK_MSG(flown != nullptr && flown->damage == 2, "the flier took no flak");
+        CHECK_MSG(duel.board().findById(rearId)->damage == 4,
+                  "a surviving flier should still land its strike");
+    }
+    {
+        DuelEngine duel;
+        // 4 attack flak against a 3 health flier: shot out of the sky, and the
+        // strike it was carrying never arrives.
+        CardData flak = unitCard("flak", 1, 4, 5, Keyword::Intercept);
+        CardData flyer = unitCard("flyer", 1, 4, 3, Keyword::Aerial | Keyword::Rush);
+        startNeutral(duel, flak, flyer);
+
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 1) == ActionResult::Ok);
+        reachEnergy(duel, Side::Player, 2);
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Support, 1) == ActionResult::Ok);
+        duel.endTurn();
+
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 1) == ActionResult::Ok);
+        const int flyerId = duel.board().units(Side::Opponent).front()->instanceId;
+        const int rearId =
+            duel.board().unitsIn(Side::Player, BoardLine::Support).front()->instanceId;
+
+        CHECK(duel.declareAttack(Side::Opponent, flyerId, rearId) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(flyerId) == nullptr, "the flier survived 4 flak on 3 health");
+        CHECK_MSG(duel.board().findById(rearId)->damage == 0,
+                  "a flier shot down still landed its strike");
+    }
+    {
+        DuelEngine duel;
+        // Three lanes away is out of reach: the flier gets through untouched.
+        CardData flak = unitCard("flak", 1, 4, 5, Keyword::Intercept);
+        CardData flyer = unitCard("flyer", 1, 4, 3, Keyword::Aerial | Keyword::Rush);
+        startNeutral(duel, flak, flyer);
+
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        reachEnergy(duel, Side::Player, 2);
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Support, 3) == ActionResult::Ok);
+        duel.endTurn();
+
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 3) == ActionResult::Ok);
+        const int flyerId = duel.board().units(Side::Opponent).front()->instanceId;
+        const int rearId =
+            duel.board().unitsIn(Side::Player, BoardLine::Support).front()->instanceId;
+
+        CHECK(duel.declareAttack(Side::Opponent, flyerId, rearId) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(flyerId)->damage == 0,
+                  "flak reached three lanes across");
+    }
+    std::cout << "[PASS] test_intercept_shoots_down_fliers_crossing_its_lanes\n";
+}
+
 void test_reactive_plating_and_return_fire() {
     DuelEngine duel;
     CardData plated = unitCard("plated", 1, 2, 5, Keyword::Reactive);
@@ -1106,6 +1181,7 @@ int main() {
     test_guard_screens_only_its_neighbours();
     test_ranged_reaches_support_and_dodges_return_fire();
     test_aerial_strikes_past_the_line_but_guard_still_holds();
+    test_intercept_shoots_down_fliers_crossing_its_lanes();
     test_reactive_plating_and_return_fire();
     test_vanguard_passive_stacks_with_reactive_on_the_frontline_only();
     test_overkill_spills_into_the_reactor();

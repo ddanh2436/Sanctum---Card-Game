@@ -410,6 +410,23 @@ int AICommander::scoreAttack(const DuelEngine& duel, const Unit& attacker, int t
     if (kills && target->hasKeyword(Keyword::Taunt)) {
         score += 6 + guardCoverage(duel, *target) * 9;
     }
+
+    // Flak. Flying into a covered lane costs the flier its interceptor's attack
+    // before it lands anything, and can cost it the whole frame. Without this
+    // the AI flew its Titans into a 4 attack turret every turn, which made
+    // Intercept read as a trap on the AI rather than as a rule.
+    if (attacker.hasKeyword(Keyword::Aerial)) {
+        const UnitLocation at = duel.board().locate(targetId);
+        if (at.valid()) {
+            if (const Unit* flak = duel.interceptorOver(other(m_side), at.slot)) {
+                const int bite = flak->attack();
+                score -= bite * 2;
+                // Being shot down is worse than taking the hit: the strike it
+                // was carrying never lands either.
+                if (bite >= attacker.health()) score -= unitValue(attacker) + 10;
+            }
+        }
+    }
     return score;
 }
 

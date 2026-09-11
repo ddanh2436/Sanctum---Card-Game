@@ -506,6 +506,26 @@ bool DuelEngine::laneIsOpen(Side side, int slot) const {
         && m_board.at(side, BoardLine::Support, slot) == nullptr;
 }
 
+const Unit* DuelEngine::interceptorOver(Side defender, int lane) const {
+    for (int slot = 0; slot < Board::kLineSlots; ++slot) {
+        if (std::abs(slot - lane) > kInterceptReach) continue;
+        const Unit* unit = m_board.at(defender, BoardLine::Frontline, slot);
+        if (unit && unit->isAlive() && unit->hasKeyword(Keyword::Intercept)) return unit;
+    }
+    return nullptr;
+}
+
+Unit* DuelEngine::interceptorFor(Side defender, int lane) {
+    // Frontline only: an interceptor in the support row is behind the thing it
+    // is meant to be shooting at.
+    for (int slot = 0; slot < Board::kLineSlots; ++slot) {
+        if (std::abs(slot - lane) > kInterceptReach) continue;
+        Unit* unit = m_board.at(defender, BoardLine::Frontline, slot);
+        if (unit && unit->isAlive() && unit->hasKeyword(Keyword::Intercept)) return unit;
+    }
+    return nullptr;
+}
+
 /// True when a living Guard stands immediately left or right of this frame in
 /// its own row. A Guard screens its neighbours, not the whole board.
 bool DuelEngine::isScreened(const UnitLocation& where) const {
@@ -646,6 +666,45 @@ ActionResult DuelEngine::declareAttack(Side side, int attackerId, int targetId) 
     }
 
     emit(DuelEvent::Type::AttackDeclared, side, "", attackerId, attacker->attack(), targetId);
+
+    // ---- flak: Intercept fires before the strike lands ----
+    //
+    // Aerial was the one keyword with no answer on the board. It ignores the
+    // lane rules AND Guard, so the only counterplay was to kill the flier on
+    // your own turn - which is not counterplay, it is a race. An Intercept
+    // frame in the defending frontline covers its own lane and one either side
+    // and shoots first.
+    //
+    // The lane it defends is the TARGET's lane, not the attacker's: a flier
+    // crossing the board is engaged where it arrives, which is the lane the
+    // defender actually chose to cover.
+    if (attacker->hasKeyword(Keyword::Aerial)) {
+        int lane = -1;
+        if (targetId >= 0) {
+            const UnitLocation at = m_board.locate(targetId);
+            if (at.valid()) lane = at.slot;
+        } else {
+            const UnitLocation from = m_board.locate(attackerId);
+            if (from.valid()) lane = from.slot;   // a reactor run flies its own lane
+        }
+
+        if (Unit* flak = (lane >= 0 ? interceptorFor(foe, lane) : nullptr)) {
+            const int bite = flak->attack();
+            if (bite > 0) {
+                log(flak->data.name + " intercepts " + attacker->data.name);
+                damageUnit(*attacker, bite, false, flak, foe);
+
+                // A flier shot out of the sky never lands its strike.
+                attacker = m_board.findById(attackerId);
+                if (!attacker || !attacker->isAlive()) {
+                    resolveDeaths(nullptr, side);
+                    recomputeAuras();
+                    checkGameOver();
+                    return ActionResult::Ok;
+                }
+            }
+        }
+    }
 
     // ---- attack on the reactor: the classic counter-protocol window ----
     if (targetId < 0) {
