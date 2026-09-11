@@ -232,6 +232,9 @@ void coverScreen(sf::Sprite& sprite, const sf::Texture& texture) {
     sprite.setPosition(0.0f, 0.0f);
 }
 
+/// Shown in the menu footer. One place to bump it.
+constexpr const char* kGameVersion = "v0.9.0-alpha";
+
 void drawPanel(sf::RenderTarget& target, sf::FloatRect bounds, sf::Color fill, sf::Color outline) {
     sf::RectangleShape panel({ bounds.width, bounds.height });
     panel.setPosition(bounds.left, bounds.top);
@@ -867,6 +870,12 @@ private:
     int m_avatarHovered = -1;
 
     static constexpr float kColumnX = 320.0f;
+    // The picker sits in a panel of its own. Loose thumbnails tucked under the
+    // last button read as a fourth row of buttons, which is how a player ends up
+    // clicking a face when they meant to quit.
+    static constexpr float kProfileTop = 578.0f;
+    static constexpr float kProfileH   = 94.0f;
+    static constexpr float kAvatarRowY = 604.0f;
 
     void layoutAvatars();
     void renderAvatars(sf::RenderTarget& target) const;
@@ -911,12 +920,35 @@ private:
 
     std::array<sf::FloatRect, kMechRoleCount> m_tiles;
     int m_hovered = -1;
+    float m_time = 0.0f;
+    sf::Vector2f m_mouse;
+
+    /// The deck the current pair would build. Rebuilt only when the pair
+    /// changes: the old code built a 24-card deck inside render(), every frame,
+    /// to print one line of text.
+    DeckConfiguration m_preview;
+    sf::FloatRect m_compBar;
+
+    /// Each doctrine's Titan, resolved once. Held BY VALUE: the first version
+    /// kept a pointer into the vector cardsForRole() returns, which is a
+    /// temporary - it died at the end of the range-for, and the tile printed a
+    /// Titan with no name because the ints survived in freed memory and the
+    /// std::string did not.
+    std::array<CardData, kMechRoleCount> m_titan;
+    std::array<bool, kMechRoleCount> m_hasTitan{};
 
     UiButton m_confirmButton;
     UiButton m_backButton;
 
     void layoutTiles();
+    void refreshPreview();
     void drawRoleTile(sf::RenderTarget& target, MechRole role, int slot) const;
+    /// The doctrine's emblem, drawn from primitives at low alpha behind the
+    /// tile text. Six shapes rather than six PNGs, so a tile is never waiting
+    /// on an art file that does not exist yet.
+    void drawDoctrineGlyph(sf::RenderTarget& target, MechRole role,
+                           sf::Vector2f centre, float radius, sf::Color colour) const;
+    void drawCompositionBar(sf::RenderTarget& target) const;
 
 public:
     RoleSelectState(StateManager& sm, const sf::Font& font);
@@ -1712,6 +1744,11 @@ MenuState::MenuState(StateManager& sm, const sf::Font& font)
     m_titleText.setStyle(sf::Text::Bold);
     m_titleText.setLetterSpacing(4.0f);
     m_titleText.setFillColor(sf::Color(244, 248, 252));
+    // Outlined, not drop-shadowed. The art behind this column is a lit figure
+    // with pale hair, and a directional shadow only helps on one side of a
+    // glyph; an outline holds the letterform against whatever is behind it.
+    m_titleText.setOutlineColor(sf::Color(4, 8, 18, 225));
+    m_titleText.setOutlineThickness(3.0f);
     TextUtils::centerBoth(m_titleText);
     m_titleText.setPosition(kColumnX, 178.0f);
 
@@ -1720,6 +1757,8 @@ MenuState::MenuState(StateManager& sm, const sf::Font& font)
     m_subtitleText.setCharacterSize(22);
     m_subtitleText.setLetterSpacing(7.0f);
     m_subtitleText.setFillColor(sf::Color(240, 96, 100));
+    m_subtitleText.setOutlineColor(sf::Color(4, 8, 18, 225));
+    m_subtitleText.setOutlineThickness(2.0f);
     TextUtils::centerBoth(m_subtitleText);
     m_subtitleText.setPosition(kColumnX, 234.0f);
 
@@ -1739,7 +1778,9 @@ MenuState::MenuState(StateManager& sm, const sf::Font& font)
         text.setFont(font);
         text.setString(line);
         text.setCharacterSize(15);
-        text.setFillColor(sf::Color(176, 198, 216));
+        text.setFillColor(sf::Color(186, 206, 222));
+        text.setOutlineColor(sf::Color(4, 8, 18, 215));
+        text.setOutlineThickness(2.0f);
         TextUtils::centerBoth(text);
         text.setPosition(kColumnX, y);
         m_taglineLines.push_back(text);
@@ -1750,17 +1791,23 @@ MenuState::MenuState(StateManager& sm, const sf::Font& font)
                         { 320.0f, 54.0f }, sf::Color(214, 60, 66), 20);
     m_settingsButton.setup(font, "SETTINGS", { kColumnX, 486.0f },
                            { 320.0f, 46.0f }, sf::Color(186, 172, 140), 17);
-    m_quitButton.setup(font, "DEPART", { kColumnX, 544.0f },
+    // "DEPART" read as "set out" - the same thing NEW GAME does - so it was the
+    // wrong word on the one button you cannot undo.
+    m_quitButton.setup(font, "QUIT", { kColumnX, 544.0f },
                        { 320.0f, 46.0f }, sf::Color(150, 142, 130), 17);
 
     AudioManager::get().playMusicCue(AudioManager::Cue::MusicMenu);
     layoutAvatars();
 
-    m_footerText.setFont(font);
-    m_footerText.setString("Drag cards to summon  |  drag a unit onto a foe to attack  |  Space ends your turn");
-    m_footerText.setCharacterSize(13);
-    m_footerText.setFillColor(sf::Color(150, 172, 192));
-    m_footerText.setPosition(28.0f, 686.0f);
+    // The old footer explained how to fight, on a screen where you cannot. It
+    // belongs in the duel HUD, and here it only crowded the picker above it.
+    m_footerText.setFont(Fonts::ui());
+    m_footerText.setString(std::string("SANCTUM  ") + kGameVersion
+                           + "        [ENTER] new game        [ESC] settings");
+    m_footerText.setCharacterSize(12);
+    m_footerText.setLetterSpacing(1.4f);
+    m_footerText.setFillColor(sf::Color(118, 134, 152));
+    m_footerText.setPosition(28.0f, 690.0f);
 }
 
 void MenuState::layoutAvatars() {
@@ -1772,26 +1819,38 @@ void MenuState::layoutAvatars() {
     // it, so dropping a tenth portrait into assets/avatars/ does not push the
     // last one off the screen.
     const int count = static_cast<int>(pool.size());
-    const float width = 328.0f;
+    // Inside the panel, not across the whole column: the row has to leave the
+    // panel's own border and label room to breathe.
+    const float width = 312.0f;
     const float gap = 9.0f;
     float size = (width - (count - 1) * gap) / static_cast<float>(count);
-    size = std::clamp(size, 24.0f, 48.0f);
+    size = std::clamp(size, 24.0f, 44.0f);
 
     const float span = count * size + (count - 1) * gap;
     const float startX = kColumnX - span / 2.0f;
     for (int i = 0; i < count; ++i) {
-        m_avatarSlots.push_back({ startX + i * (size + gap), 600.0f, size, size });
+        m_avatarSlots.push_back({ startX + i * (size + gap), kAvatarRowY, size, size });
     }
 }
 
 void MenuState::renderAvatars(sf::RenderTarget& target) const {
-    drawLabel(target, "COMMANDER PORTRAIT", { kColumnX - 160.0f, 578.0f }, 11,
-              sf::Color(158, 150, 138), 3.0f);
+    const sf::FloatRect panel{ kColumnX - 178.0f, kProfileTop, 356.0f, kProfileH };
+    drawPanel(target, panel, sf::Color(10, 14, 24, 216), sf::Color(96, 106, 122, 190));
+
+    // A hairline across the top of the panel, under the label, so the group
+    // reads as one control rather than as a box someone drew around a row.
+    sf::RectangleShape rule({ panel.width - 26.0f, 1.0f });
+    rule.setPosition(panel.left + 13.0f, panel.top + 23.0f);
+    rule.setFillColor(sf::Color(86, 96, 112, 160));
+    target.draw(rule);
+
+    drawLabel(target, "PILOT PROFILE", { panel.left + 14.0f, panel.top + 8.0f }, 10,
+              sf::Color(176, 192, 210), 3.0f, true);
 
     const auto& pool = Avatars::pool();
     if (pool.empty()) {
         drawLabel(target, "Drop images into assets/avatars/ to choose a face",
-                  { kColumnX - 160.0f, 602.0f }, 12, sf::Color(112, 106, 112));
+                  { panel.left + 14.0f, panel.top + 36.0f }, 12, sf::Color(112, 106, 112));
         return;
     }
 
@@ -1811,17 +1870,44 @@ void MenuState::renderAvatars(sf::RenderTarget& target) const {
         CardArt::drawAvatar(target, pool[i], box, edge);
 
         if (selected) {
-            sf::RectangleShape ring({ box.width + 6.0f, box.height + 6.0f });
-            ring.setPosition(box.left - 3.0f, box.top - 3.0f);
-            ring.setFillColor(sf::Color::Transparent);
-            ring.setOutlineThickness(2.0f);
-            ring.setOutlineColor(sf::Color(236, 190, 74));
-            target.draw(ring);
+            // Two rings and four corner ticks. One thin gold outline was not
+            // telling the eye anything the hover state did not already say.
+            for (int ring = 0; ring < 2; ++ring) {
+                const float pad = 3.0f + ring * 3.0f;
+                sf::RectangleShape halo({ box.width + pad * 2.0f, box.height + pad * 2.0f });
+                halo.setPosition(box.left - pad, box.top - pad);
+                halo.setFillColor(sf::Color::Transparent);
+                halo.setOutlineThickness(ring == 0 ? 2.5f : 1.0f);
+                halo.setOutlineColor(ring == 0 ? sf::Color(248, 202, 92)
+                                               : sf::Color(248, 202, 92, 90));
+                target.draw(halo);
+            }
+            const float tick = 7.0f;
+            for (int corner = 0; corner < 4; ++corner) {
+                const float cx = (corner % 2 == 0) ? box.left - 6.0f
+                                                   : box.left + box.width + 6.0f - tick;
+                const float cy = (corner < 2) ? box.top - 6.0f
+                                              : box.top + box.height + 6.0f - 2.0f;
+                sf::RectangleShape bar({ tick, 2.0f });
+                bar.setPosition(cx, cy);
+                bar.setFillColor(sf::Color(252, 216, 120));
+                target.draw(bar);
+            }
         }
+        // The hovered name goes in the panel header, right-aligned, NOT above
+        // the thumbnail: above the thumbnail is exactly where the panel's own
+        // label sits, and the two printed over each other.
         if (hot) {
-            drawLabel(target, Avatars::label(pool[i]),
-                      { box.left - 4.0f, box.top - 16.0f }, 10,
-                      sf::Color(236, 214, 178), 1.2f);
+            sf::Text name;
+            name.setFont(Fonts::ui());
+            name.setString(Avatars::label(pool[i]));
+            name.setCharacterSize(10);
+            name.setLetterSpacing(1.6f);
+            name.setStyle(sf::Text::Bold);
+            name.setFillColor(sf::Color(240, 218, 176));
+            const sf::FloatRect bb = name.getLocalBounds();
+            name.setPosition(panel.left + panel.width - 14.0f - bb.width, panel.top + 8.0f);
+            target.draw(name);
         }
     }
 
@@ -1829,8 +1915,8 @@ void MenuState::renderAvatars(sf::RenderTarget& target) const {
     // version put this at 686 exactly and the two lines printed over each other.
     drawLabel(target,
               picked.empty() ? "following your primary core" : "click again to follow your core",
-              { kColumnX - 160.0f, 600.0f + m_avatarSlots.front().height + 8.0f }, 10,
-              sf::Color(122, 116, 122), 1.4f);
+              { panel.left + 14.0f, kAvatarRowY + m_avatarSlots.front().height + 7.0f }, 10,
+              sf::Color(126, 138, 152), 1.4f);
 }
 
 void MenuState::handleEvent(const sf::Event& event, const sf::RenderWindow& window) {
@@ -1917,13 +2003,26 @@ RoleSelectState::RoleSelectState(StateManager& sm, const sf::Font& font)
                           { 320.0f, 48.0f }, sf::Color(236, 190, 74), 18);
     m_backButton.setup(font, "BACK", { 130.0f, 44.0f },
                        { 160.0f, 38.0f }, sf::Color(160, 150, 136), 14);
+    m_compBar = { 640.0f - 210.0f, 588.0f, 420.0f, 16.0f };
+    for (int i = 0; i < kMechRoleCount; ++i) {
+        for (const CardData& card : DeckBuilder::cardsForRole(static_cast<MechRole>(i))) {
+            if (card.tier != CardTier::Tier3) continue;
+            m_titan[static_cast<size_t>(i)] = card;
+            m_hasTitan[static_cast<size_t>(i)] = true;
+            break;
+        }
+    }
+    refreshPreview();
     AudioManager::get().playMusicCue(AudioManager::Cue::MusicMenu);
 }
 
 void RoleSelectState::layoutTiles() {
     // Two rows of three, centred in the 1280x720 design space.
     constexpr float kTileW = 340.0f;
-    constexpr float kTileH = 168.0f;
+    // 190, not 168: the tile carries a Titan line now. Choosing a primary core
+    // is what unlocks a Titan, and the screen used to say nothing at all about
+    // which one you were unlocking.
+    constexpr float kTileH = 190.0f;
     constexpr float kGapX = 24.0f;
     constexpr float kGapY = 16.0f;
     const float startX = (1280.0f - (kTileW * 3.0f + kGapX * 2.0f)) / 2.0f;
@@ -1940,9 +2039,17 @@ void RoleSelectState::layoutTiles() {
     }
 }
 
+void RoleSelectState::refreshPreview() {
+    m_preview = DeckBuilder::build(m_primary, m_secondary);
+    m_confirmButton.enabled = m_preview.isValidDeck();
+    m_confirmButton.setText(m_preview.isValidDeck() ? "COMMIT LOADOUT"
+                                                    : "LOADOUT INCOMPLETE");
+}
+
 void RoleSelectState::handleEvent(const sf::Event& event, const sf::RenderWindow& window) {
     if (event.type == sf::Event::MouseMoved) {
         const sf::Vector2f p = window.mapPixelToCoords({ event.mouseMove.x, event.mouseMove.y });
+        m_mouse = p;
         m_hovered = -1;
         for (int i = 0; i < kMechRoleCount; ++i) {
             if (m_tiles[static_cast<size_t>(i)].contains(p)) m_hovered = i;
@@ -1966,6 +2073,7 @@ void RoleSelectState::handleEvent(const sf::Event& event, const sf::RenderWindow
             } else if (picked != m_primary) {
                 m_secondary = picked;
             }
+            refreshPreview();
         }
 
         if (m_confirmButton.contains(p)) {
@@ -1984,7 +2092,73 @@ void RoleSelectState::handleEvent(const sf::Event& event, const sf::RenderWindow
     }
 }
 
-void RoleSelectState::update(float) {}
+void RoleSelectState::update(float dt) { m_time += dt; }
+
+void RoleSelectState::drawDoctrineGlyph(sf::RenderTarget& target, MechRole role,
+                                        sf::Vector2f c, float r, sf::Color colour) const {
+    auto poly = [&](std::initializer_list<sf::Vector2f> pts) {
+        sf::ConvexShape shape;
+        shape.setPointCount(pts.size());
+        std::size_t i = 0;
+        for (sf::Vector2f pt : pts) shape.setPoint(i++, { c.x + pt.x * r, c.y + pt.y * r });
+        shape.setFillColor(colour);
+        target.draw(shape);
+    };
+    auto disc = [&](sf::Vector2f at, float rad, bool hollow) {
+        sf::CircleShape circle(rad * r);
+        circle.setOrigin(rad * r, rad * r);
+        circle.setPosition(c.x + at.x * r, c.y + at.y * r);
+        circle.setFillColor(hollow ? sf::Color::Transparent : colour);
+        if (hollow) {
+            circle.setOutlineThickness(0.13f * r);
+            circle.setOutlineColor(colour);
+        }
+        target.draw(circle);
+    };
+    auto bar = [&](sf::Vector2f at, float w, float h, float deg) {
+        sf::RectangleShape rect({ w * r, h * r });
+        rect.setOrigin(w * r * 0.5f, h * r * 0.5f);
+        rect.setPosition(c.x + at.x * r, c.y + at.y * r);
+        rect.setRotation(deg);
+        rect.setFillColor(colour);
+        target.draw(rect);
+    };
+
+    switch (role) {
+    case MechRole::Vanguard:            // tower shield
+        poly({ {0.0f,-1.0f}, {0.74f,-0.62f}, {0.74f,0.28f}, {0.0f,1.0f},
+               {-0.74f,0.28f}, {-0.74f,-0.62f} });
+        break;
+    case MechRole::Paladin:             // overcharge core: a sun
+        disc({ 0.0f, 0.0f }, 0.40f, false);
+        for (int i = 0; i < 8; ++i) {
+            bar({ 0.0f, 0.0f }, 0.16f, 1.95f, i * 22.5f);
+        }
+        break;
+    case MechRole::Valkyrie:            // a wing, three tapered feathers
+        for (int i = 0; i < 3; ++i) {
+            const float lift = -0.34f * i;
+            const float reach = 1.0f - 0.14f * i;
+            poly({ {-0.9f, 0.42f + lift}, {reach, -0.22f + lift},
+                   {reach * 0.86f, 0.10f + lift}, {-0.82f, 0.66f + lift} });
+        }
+        break;
+    case MechRole::Dragoon:             // a lance
+        bar({ 0.10f, 0.10f }, 1.55f, 0.15f, 38.0f);
+        poly({ {0.92f,-0.86f}, {1.06f,-0.30f}, {0.58f,-0.46f}, {0.70f,-0.98f} });
+        break;
+    case MechRole::Siege:               // barrel over a track wheel
+        bar({ 0.06f, -0.30f }, 1.45f, 0.40f, -18.0f);
+        disc({ 0.78f, -0.55f }, 0.24f, true);
+        disc({ -0.30f, 0.50f }, 0.42f, true);
+        break;
+    case MechRole::Inquisitor:          // a watching lens
+        poly({ {-1.0f,0.0f}, {-0.42f,-0.62f}, {0.42f,-0.62f}, {1.0f,0.0f},
+               {0.42f,0.62f}, {-0.42f,0.62f} });
+        disc({ 0.0f, 0.0f }, 0.30f, true);
+        break;
+    }
+}
 
 void RoleSelectState::drawRoleTile(sf::RenderTarget& target, MechRole role, int slot) const {
     const sf::FloatRect bounds = m_tiles[static_cast<size_t>(slot)];
@@ -2008,7 +2182,31 @@ void RoleSelectState::drawRoleTile(sf::RenderTarget& target, MechRole role, int 
     else if (isSecondary) outline = sf::Color(accent.r, accent.g, accent.b, 170);
     else if (hovered)     outline = sf::Color(accent.r, accent.g, accent.b, 130);
 
+    // The primary core decides the passive AND is the only slot that may field
+    // a Titan. It should not look like the splash with a different word on it,
+    // so the whole tile carries a breathing halo in its own doctrine colour.
+    if (isPrimary) {
+        const float pulse = 0.5f + 0.5f * std::sin(m_time * 2.4f);
+        for (int ring = 3; ring >= 1; --ring) {
+            const float pad = static_cast<float>(ring) * 2.6f;
+            sf::RectangleShape halo({ bounds.width + pad * 2.0f, bounds.height + pad * 2.0f });
+            halo.setPosition(bounds.left - pad, bounds.top - pad);
+            halo.setFillColor(sf::Color::Transparent);
+            halo.setOutlineThickness(1.6f);
+            const float fade = (1.0f - ring / 4.0f) * (0.45f + 0.55f * pulse);
+            halo.setOutlineColor(sf::Color(accent.r, accent.g, accent.b,
+                                           static_cast<sf::Uint8>(150.0f * fade)));
+            target.draw(halo);
+        }
+    }
+
     drawPanel(target, bounds, fill, outline);
+
+    // The emblem, sunk into the tile rather than laid on it. Drawn before the
+    // text so a long passive line always wins.
+    drawDoctrineGlyph(target, role,
+                      { bounds.left + bounds.width - 62.0f, bounds.top + 108.0f }, 38.0f,
+                      sf::Color(accent.r, accent.g, accent.b, blocked ? 22 : 40));
 
     // A thicker bar down the left edge reads as the doctrine colour at a glance.
     sf::RectangleShape stripe({ 5.0f, bounds.height - 2.0f });
@@ -2024,13 +2222,13 @@ void RoleSelectState::drawRoleTile(sf::RenderTarget& target, MechRole role, int 
     drawLabel(target, roleTitle(role), { x, bounds.top + 46.0f }, 13,
               sf::Color(158, 156, 154));
 
-    drawLabel(target, rolePassiveName(role), { x, bounds.top + 78.0f }, 14,
+    drawLabel(target, rolePassiveName(role), { x, bounds.top + 76.0f }, 14,
               textColour, 1.0f, true);
 
     // The passive text is one long sentence; wrap it by hand to the tile width.
     const std::string passive = rolePassiveText(role);
     std::string line;
-    float y = bounds.top + 100.0f;
+    float y = bounds.top + 98.0f;
     std::istringstream words(passive);
     std::string word;
     while (words >> word) {
@@ -2045,13 +2243,108 @@ void RoleSelectState::drawRoleTile(sf::RenderTarget& target, MechRole role, int 
     }
     if (!line.empty()) drawLabel(target, line, { x, y }, 12, sf::Color(176, 172, 168));
 
-    // Slot badge
-    if (isPrimary || isSecondary) {
-        const char* tag = isPrimary ? "PRIMARY" : "SECONDARY";
-        sf::FloatRect badge { bounds.left + bounds.width - 106.0f, bounds.top + 12.0f, 94.0f, 22.0f };
-        drawPanel(target, badge, sf::Color(14, 14, 18, 240), accent);
-        drawLabel(target, tag, { badge.left + 9.0f, badge.top + 4.0f }, 11, accent, 1.4f);
+    // The Titan. Choosing a primary core is the decision that unlocks one, and
+    // the screen used to name every passive but never the thing the passive is
+    // building toward - so the choice was made half blind.
+    sf::RectangleShape rule({ bounds.width - 44.0f, 1.0f });
+    rule.setPosition(x, bounds.top + 152.0f);
+    rule.setFillColor(sf::Color(accent.r, accent.g, accent.b, blocked ? 40 : 90));
+    target.draw(rule);
+
+    const size_t index = static_cast<size_t>(role);
+    if (m_hasTitan[index]) {
+        const CardData& titan = m_titan[index];
+        std::ostringstream titanLine;
+        titanLine << "TITAN  " << titan.name << "   " << titan.manaCost << " energy   "
+                  << titan.attack << "/" << titan.health;
+        drawLabel(target, titanLine.str(), { x, bounds.top + 162.0f }, 11,
+                  blocked ? sf::Color(104, 102, 100)
+                          : sf::Color(accent.r, accent.g, accent.b, 230), 1.2f, true);
+    } else {
+        drawLabel(target, "NO TITAN IN THIS CORE", { x, bounds.top + 162.0f }, 11,
+                  sf::Color(104, 102, 100), 1.2f);
     }
+
+    // Slot badge. Two different objects, not one word swapped: the primary is a
+    // commitment, the splash is a garnish, and they should not read alike.
+    if (isPrimary || isSecondary) {
+        const char* tag = isPrimary ? "PRIMARY CORE" : "TACTICAL SPLASH";
+        const float w = isPrimary ? 106.0f : 118.0f;
+        sf::FloatRect badge { bounds.left + bounds.width - w - 12.0f, bounds.top + 12.0f,
+                              w, 22.0f };
+        if (isPrimary) {
+            drawPanel(target, badge,
+                      sf::Color(accent.r / 3 + 18, accent.g / 3 + 16, accent.b / 4 + 14, 248),
+                      accent);
+            // A filled pip in front of the word, so the badge reads as "live".
+            sf::CircleShape pip(3.0f);
+            pip.setOrigin(3.0f, 3.0f);
+            pip.setPosition(badge.left + 11.0f, badge.top + badge.height / 2.0f);
+            pip.setFillColor(accent);
+            target.draw(pip);
+            drawLabel(target, tag, { badge.left + 19.0f, badge.top + 5.0f }, 10, accent, 1.2f, true);
+        } else {
+            // Silver and hollow: a splash is not a commitment.
+            drawPanel(target, badge, sf::Color(12, 13, 17, 200), sf::Color(150, 156, 168, 190));
+            drawLabel(target, tag, { badge.left + 9.0f, badge.top + 5.0f }, 10,
+                      sf::Color(178, 184, 196), 1.2f);
+        }
+    }
+}
+
+void RoleSelectState::drawCompositionBar(sf::RenderTarget& target) const {
+    CardData probeP, probeS;
+    probeP.role = m_primary;
+    probeS.role = m_secondary;
+    const sf::Color colourP = CardArt::accentFor(probeP);
+    const sf::Color colourS = CardArt::accentFor(probeS);
+
+    const int countP = m_preview.countFor(m_primary);
+    const int countS = m_preview.countFor(m_secondary);
+    const int total = std::max(1, countP + countS);
+
+    drawPanel(target, m_compBar, sf::Color(12, 13, 18, 235), sf::Color(70, 74, 84, 180));
+
+    // Two segments, sized by share. The numbers were already on screen as text;
+    // what was missing was the RATIO, which is the thing that decides how often
+    // the splash actually turns up in a hand.
+    const float inner = m_compBar.width - 4.0f;
+    const float widthP = inner * static_cast<float>(countP) / static_cast<float>(total);
+
+    sf::RectangleShape segP({ widthP, m_compBar.height - 4.0f });
+    segP.setPosition(m_compBar.left + 2.0f, m_compBar.top + 2.0f);
+    segP.setFillColor(colourP);
+    target.draw(segP);
+
+    sf::RectangleShape segS({ inner - widthP, m_compBar.height - 4.0f });
+    segS.setPosition(m_compBar.left + 2.0f + widthP, m_compBar.top + 2.0f);
+    segS.setFillColor(sf::Color(colourS.r, colourS.g, colourS.b, 205));
+    target.draw(segS);
+
+    if (!m_compBar.contains(m_mouse)) return;
+
+    // Hovering asks the other question: not who the cards belong to, but what
+    // they DO - which is what decides whether the deck can hold a line.
+    int units = 0, spells = 0, counters = 0;
+    for (const CardData& card : m_preview.cards) {
+        if (card.category == CardCategory::Spell) ++spells;
+        else if (card.category == CardCategory::Trap) ++counters;
+        else ++units;
+    }
+    std::ostringstream tip;
+    tip << units << " Units    " << spells << " Spells    " << counters << " Counters";
+
+    const sf::FloatRect box{ m_compBar.left + m_compBar.width / 2.0f - 120.0f,
+                             m_compBar.top - 32.0f, 240.0f, 26.0f };
+    drawPanel(target, box, sf::Color(10, 11, 16, 246), sf::Color(150, 132, 84, 210));
+    sf::Text tipText;
+    tipText.setFont(Fonts::ui());
+    tipText.setString(tip.str());
+    tipText.setCharacterSize(12);
+    tipText.setFillColor(sf::Color(232, 224, 208));
+    TextUtils::centerBoth(tipText);
+    tipText.setPosition(box.left + box.width / 2.0f, box.top + box.height / 2.0f);
+    target.draw(tipText);
 }
 
 void RoleSelectState::render(sf::RenderTarget& target) {
@@ -2077,25 +2370,49 @@ void RoleSelectState::render(sf::RenderTarget& target) {
     for (int i = 0; i < kMechRoleCount; ++i) {
         drawRoleTile(target, static_cast<MechRole>(i), i);
     }
-    // The loadout line, so the commitment is legible before it is made.
-    const DeckConfiguration preview = DeckBuilder::build(m_primary, m_secondary);
+    // The loadout, as a ratio and as a sentence. The bar answers "how much of
+    // my deck is the splash" at a glance; the line underneath keeps the exact
+    // counts, because a bar cannot be counted.
+    drawCompositionBar(target);
+
     std::ostringstream summary;
-    summary << displayName(m_primary) << " " << preview.countFor(m_primary)
-            << "   /   " << displayName(m_secondary) << " " << preview.countFor(m_secondary);
-    if (!preview.isValidDeck()) summary << "   -   " << toString(preview.validate());
+    summary << displayName(m_primary) << " " << m_preview.countFor(m_primary)
+            << "   /   " << displayName(m_secondary) << " " << m_preview.countFor(m_secondary);
+    if (!m_preview.isValidDeck()) summary << "   -   " << toString(m_preview.validate());
 
     sf::Text line;
     line.setFont(m_font);
     line.setString(summary.str());
     line.setCharacterSize(16);
     line.setLetterSpacing(1.6f);
-    line.setFillColor(preview.isValidDeck() ? sf::Color(214, 208, 198) : sf::Color(214, 120, 110));
+    line.setFillColor(m_preview.isValidDeck() ? sf::Color(214, 208, 198) : sf::Color(214, 120, 110));
     TextUtils::centerBoth(line);
-    line.setPosition(640.0f, 626.0f);
+    line.setPosition(640.0f, 616.0f);
     target.draw(line);
+
+    // A ready button should look ready. The halo only appears once the pair
+    // actually builds a legal deck.
+    if (m_confirmButton.enabled) {
+        const float pulse = 0.5f + 0.5f * std::sin(m_time * 3.1f);
+        sf::FloatRect box = m_confirmButton.box.getGlobalBounds();
+        for (int ring = 2; ring >= 1; --ring) {
+            const float pad = static_cast<float>(ring) * 3.0f;
+            sf::RectangleShape halo({ box.width + pad * 2.0f, box.height + pad * 2.0f });
+            halo.setPosition(box.left - pad, box.top - pad);
+            halo.setFillColor(sf::Color::Transparent);
+            halo.setOutlineThickness(1.5f);
+            halo.setOutlineColor(sf::Color(236, 190, 74,
+                static_cast<sf::Uint8>((1.0f - ring / 3.0f) * (60.0f + 110.0f * pulse))));
+            target.draw(halo);
+        }
+    }
 
     m_confirmButton.render(target);
     m_backButton.render(target);
+    if (!m_confirmButton.enabled) {
+        drawLabel(target, toString(m_preview.validate()),
+                  { 640.0f - 110.0f, 690.0f }, 11, sf::Color(206, 122, 112), 1.6f);
+    }
 }
 
 // =============================================================================
