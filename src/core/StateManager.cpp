@@ -463,6 +463,7 @@ class IntroState;
 class MenuState;
 class RoleSelectState;
 class MapState;
+class DeckListState;
 class DeckEditState;
 class DuelState;
 class RewardState;
@@ -989,6 +990,11 @@ private:
 
     MechRole m_primary;
     MechRole m_secondary;
+    /// Empty until the deck has been saved once, so a new deck does not
+    /// overwrite whatever was last edited.
+    std::string m_deckId;
+    std::string m_deckName;
+    bool m_renaming = false;
 
     /// Every card legally available to this pair, ordered by cost then name so
     /// the grid reads as a curve rather than as catalogue order.
@@ -999,8 +1005,20 @@ private:
     /// itself every time a count changes.
     std::vector<std::string> m_order;
 
+    /// What the grid is currently showing: indices into m_pool. The grid reads
+    /// this, never m_pool directly, so search and filter need no special cases
+    /// anywhere else.
+    std::vector<int> m_shown;
+    std::string m_search;
+    /// Which kinds of card the grid admits. Deliberately not a bitmask - four
+    /// exclusive chips are read faster than four independent toggles.
+    enum class Show { All, Units, Spells, Counters };
+    Show m_show = Show::All;
+    /// Empty means both cores.
+    int m_roleFilter = -1;       // -1 both, 0 primary, 1 secondary
+
     int m_scroll = 0;            // first visible grid ROW
-    int m_hoverCard = -1;        // index into m_pool
+    int m_hoverCard = -1;        // index into m_shown
     int m_hoverRow = -1;         // index into m_order
     sf::Vector2f m_mouse;
     float m_time = 0.0f;
@@ -1014,15 +1032,20 @@ private:
 
     static constexpr int kCols = 5;
     static constexpr int kRows = 3;
-    static constexpr float kCardW = 140.0f;
-    static constexpr float kCardH = 192.0f;
+    // Sized to what is left after the filter strip, keeping the card's own
+    // 0.73 proportion so the frame art is not stretched.
+    static constexpr float kCardW = 134.0f;
+    static constexpr float kCardH = 184.0f;
     static constexpr float kGapX = 16.0f;
-    static constexpr float kGapY = 10.0f;
-    static constexpr float kGridX = 78.0f;
-    static constexpr float kGridY = 66.0f;
+    static constexpr float kGapY = 8.0f;
+    static constexpr float kGridX = 93.0f;
+    static constexpr float kGridY = 100.0f;
 
 public:
+    /// A brand new deck on this pair.
     DeckEditState(StateManager& sm, const sf::Font& font, MechRole primary, MechRole secondary);
+    /// Reopen a deck the player already saved.
+    DeckEditState(StateManager& sm, const sf::Font& font, const DeckStore::SavedDeck& deck);
     void handleEvent(const sf::Event& event, const sf::RenderWindow& window) override;
     void update(float dt) override;
     void render(sf::RenderTarget& target) override;
@@ -1031,7 +1054,7 @@ private:
     sf::FloatRect cellAt(int visibleIndex) const;
     int cardUnder(sf::Vector2f point) const;
     int rowUnder(sf::Vector2f point) const;
-    sf::FloatRect listPanel() const { return { 896.0f, 66.0f, 356.0f, 606.0f }; }
+    sf::FloatRect listPanel() const { return { 896.0f, 100.0f, 356.0f, 572.0f }; }
     sf::FloatRect rowRect(int index) const;
 
     int total() const;
@@ -1048,7 +1071,71 @@ private:
 
     void renderGrid(sf::RenderTarget& target);
     void renderList(sf::RenderTarget& target);
+    /// The card under the cursor in the deck list, drawn large over the grid.
+    void renderRowPreview(sf::RenderTarget& target) const;
     void renderHeader(sf::RenderTarget& target);
+    void buildPool();
+    void setupChrome();
+    /// Recompute m_shown from the search box and the chips.
+    void applyFilter();
+    sf::FloatRect nameField() const { return { 896.0f, 66.0f, 356.0f, 30.0f }; }
+    sf::FloatRect searchField() const { return { 326.0f, 62.0f, 224.0f, 26.0f }; }
+    sf::FloatRect chipRect(int index) const {
+        return { 566.0f + index * 78.0f, 62.0f, 74.0f, 26.0f };
+    }
+    sf::FloatRect roleChipRect(int index) const {
+        // 72 wide, not 64: every doctrine's display name is eight characters or
+        // fewer, and the narrower chip was clipping "Vanguard" to "Vanguar".
+        return { 88.0f + index * 76.0f, 62.0f, 72.0f, 26.0f };
+    }
+};
+
+
+/**
+ * @brief Every deck the player has built, as a shelf of cards.
+ *
+ * A builder that keeps exactly one deck per pair of cores is not really a
+ * builder: the interesting question is usually "the aggressive Vanguard list or
+ * the grindy one", not "which two cores". This screen is where those live.
+ *
+ * The deck a RUN uses is still chosen by the cores picked on the way in, so
+ * several decks can share a pair and the newest of them wins. That rule is
+ * printed on the tile as IN USE rather than left to be discovered.
+ */
+class DeckListState : public GameState {
+private:
+    StateManager& m_stateManager;
+    const sf::Font& m_font;
+
+    std::vector<DeckStore::SavedDeck> m_decks;
+    int m_hovered = -1;          // -1 none, -2 the NEW DECK tile
+    int m_deleteArmed = -1;      // a tile whose X was clicked once
+    sf::Vector2f m_mouse;
+    float m_time = 0.0f;
+    UiButton m_backButton;
+
+    static constexpr int kCols = 4;
+    static constexpr float kTileW = 232.0f;
+    static constexpr float kTileH = 252.0f;
+    static constexpr float kGapX = 22.0f;
+    static constexpr float kGapY = 26.0f;
+    static constexpr float kGridX = 96.0f;
+    static constexpr float kGridY = 118.0f;
+
+public:
+    DeckListState(StateManager& sm, const sf::Font& font);
+    void handleEvent(const sf::Event& event, const sf::RenderWindow& window) override;
+    void update(float dt) override { m_time += dt; }
+    void render(sf::RenderTarget& target) override;
+
+private:
+    /// Tile 0 is always NEW DECK, so saved deck i sits at slot i + 1.
+    sf::FloatRect tileAt(int slot) const;
+    sf::FloatRect deleteAt(int slot) const;
+    int slotUnder(sf::Vector2f point) const;
+    bool isInUse(const DeckStore::SavedDeck& deck) const;
+    void drawNewTile(sf::RenderTarget& target) const;
+    void drawDeckTile(sf::RenderTarget& target, int index) const;
 };
 
 class MapState : public GameState {
@@ -2049,8 +2136,7 @@ void MenuState::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
         if (m_startButton.contains(p)) {
             m_stateManager.changeState(std::make_unique<RoleSelectState>(m_stateManager, m_font));
         } else if (m_deckButton.contains(p)) {
-            m_stateManager.changeState(std::make_unique<RoleSelectState>(
-                m_stateManager, m_font, RoleSelectState::Then::EditDeck));
+            m_stateManager.changeState(std::make_unique<DeckListState>(m_stateManager, m_font));
         } else if (m_settingsButton.contains(p)) {
             m_stateManager.pushState(std::make_unique<SettingsState>(m_stateManager, m_font));
         } else if (m_quitButton.contains(p)) {
@@ -2537,37 +2623,88 @@ void RoleSelectState::render(sf::RenderTarget& target) {
 // DeckEditState implementation
 // =============================================================================
 
-DeckEditState::DeckEditState(StateManager& sm, const sf::Font& font,
-                             MechRole primary, MechRole secondary)
-    : m_stateManager(sm), m_font(font), m_primary(primary), m_secondary(secondary) {
-
+void DeckEditState::buildPool() {
     // The pool is the primary core in full plus the secondary minus its Titan.
     // Filtering here rather than at click time means an illegal card is never
     // on screen to be clicked in the first place.
-    for (const CardData& card : DeckBuilder::cardsForRole(primary)) m_pool.push_back(card);
-    for (const CardData& card : DeckBuilder::cardsForRole(secondary)) {
-        if (DeckBuilder::allowedAsSecondary(card)) m_pool.push_back(card);
+    for (const CardData& card : DeckBuilder::cardsForRole(m_primary)) m_pool.push_back(card);
+    if (m_secondary != m_primary) {
+        for (const CardData& card : DeckBuilder::cardsForRole(m_secondary)) {
+            if (DeckBuilder::allowedAsSecondary(card)) m_pool.push_back(card);
+        }
     }
     std::sort(m_pool.begin(), m_pool.end(), [](const CardData& a, const CardData& b) {
         if (a.manaCost != b.manaCost) return a.manaCost < b.manaCost;
         return a.name < b.name;
     });
+    applyFilter();
+}
 
-    // Open on whatever the player would get anyway: their saved deck if they
-    // have one, otherwise the generated deck. A blank grid would make the
-    // screen look like work before it looks like a choice.
-    setFromConfiguration(DeckStore::configurationFor(primary, secondary));
-
-    m_backButton.setup(font, "BACK", { 110.0f, 30.0f }, { 150.0f, 34.0f },
+void DeckEditState::setupChrome() {
+    m_backButton.setup(m_font, "BACK", { 110.0f, 30.0f }, { 150.0f, 34.0f },
                        sf::Color(160, 150, 136), 14);
-    m_saveButton.setup(font, "SAVE DECK", { 1074.0f, 646.0f }, { 200.0f, 40.0f },
+    m_saveButton.setup(m_font, "SAVE DECK", { 1074.0f, 646.0f }, { 200.0f, 40.0f },
                        sf::Color(236, 190, 74), 16);
-    m_autoButton.setup(font, "AUTO-FILL", { 952.0f, 600.0f }, { 106.0f, 28.0f },
+    m_autoButton.setup(m_font, "AUTO-FILL", { 952.0f, 600.0f }, { 106.0f, 28.0f },
                        sf::Color(150, 170, 200), 12);
-    m_clearButton.setup(font, "CLEAR", { 1068.0f, 600.0f }, { 92.0f, 28.0f },
+    m_clearButton.setup(m_font, "CLEAR", { 1068.0f, 600.0f }, { 92.0f, 28.0f },
                         sf::Color(178, 132, 126), 12);
     refreshButtons();
     AudioManager::get().playMusicCue(AudioManager::Cue::MusicMenu);
+}
+
+void DeckEditState::applyFilter() {
+    m_shown.clear();
+    // Case-insensitive substring on the name. Nothing cleverer: the catalogue
+    // is seventy-odd cards and a player typing "bast" wants Bastion, not a
+    // ranked search.
+    std::string needle = m_search;
+    std::transform(needle.begin(), needle.end(), needle.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    for (int i = 0; i < static_cast<int>(m_pool.size()); ++i) {
+        const CardData& card = m_pool[static_cast<size_t>(i)];
+        if (m_show == Show::Units && card.category != CardCategory::Unit) continue;
+        if (m_show == Show::Spells && card.category != CardCategory::Spell) continue;
+        if (m_show == Show::Counters && card.category != CardCategory::Trap) continue;
+        if (m_roleFilter == 0 && card.role != m_primary) continue;
+        if (m_roleFilter == 1 && card.role != m_secondary) continue;
+        if (!needle.empty()) {
+            std::string hay = card.name;
+            std::transform(hay.begin(), hay.end(), hay.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (hay.find(needle) == std::string::npos) continue;
+        }
+        m_shown.push_back(i);
+    }
+
+    // A filter that leaves fewer rows than the current scroll would show an
+    // empty grid over real results.
+    const int rows = (static_cast<int>(m_shown.size()) + kCols - 1) / kCols;
+    m_scroll = std::clamp(m_scroll, 0, std::max(0, rows - kRows));
+    m_hoverCard = -1;
+}
+
+DeckEditState::DeckEditState(StateManager& sm, const sf::Font& font,
+                             MechRole primary, MechRole secondary)
+    : m_stateManager(sm), m_font(font), m_primary(primary), m_secondary(secondary) {
+    m_deckName = DeckStore::suggestName(primary, secondary);
+    buildPool();
+    // Open on whatever the player would get anyway: their newest deck for this
+    // pair if they have one, otherwise the generated deck. A blank grid would
+    // make the screen look like work before it looks like a choice.
+    setFromConfiguration(DeckStore::configurationFor(primary, secondary));
+    setupChrome();
+}
+
+DeckEditState::DeckEditState(StateManager& sm, const sf::Font& font,
+                             const DeckStore::SavedDeck& deck)
+    : m_stateManager(sm), m_font(font),
+      m_primary(deck.primary), m_secondary(deck.secondary),
+      m_deckId(deck.id), m_deckName(deck.name) {
+    buildPool();
+    setFromConfiguration(DeckStore::configurationOf(deck));
+    setupChrome();
 }
 
 int DeckEditState::total() const {
@@ -2668,9 +2805,9 @@ sf::FloatRect DeckEditState::cellAt(int visibleIndex) const {
 int DeckEditState::cardUnder(sf::Vector2f point) const {
     const int first = m_scroll * kCols;
     for (int i = 0; i < kCols * kRows; ++i) {
-        const int index = first + i;
-        if (index >= static_cast<int>(m_pool.size())) break;
-        if (cellAt(i).contains(point)) return index;
+        const int slot = first + i;
+        if (slot >= static_cast<int>(m_shown.size())) break;
+        if (cellAt(i).contains(point)) return m_shown[static_cast<size_t>(slot)];
     }
     return -1;
 }
@@ -2688,6 +2825,30 @@ int DeckEditState::rowUnder(sf::Vector2f point) const {
 }
 
 void DeckEditState::handleEvent(const sf::Event& event, const sf::RenderWindow& window) {
+    // Typing goes to whichever field is focused. One field is focused at a
+    // time and clicking elsewhere drops focus, so a keystroke can never end up
+    // in two places.
+    if (event.type == sf::Event::TextEntered) {
+        const sf::Uint32 ch = event.text.unicode;
+        std::string& field = m_renaming ? m_deckName : m_search;
+        const bool searching = !m_renaming;
+        if (ch == 8) {                                   // backspace
+            if (!field.empty()) field.pop_back();
+            if (searching) applyFilter();
+            return;
+        }
+        if (ch == 13) { m_renaming = false; return; }    // enter commits a rename
+        if (ch == 27) {                                  // escape clears
+            if (m_renaming) { m_renaming = false; return; }
+            if (!m_search.empty()) { m_search.clear(); applyFilter(); return; }
+        }
+        if (ch >= 32 && ch < 127 && field.size() < (m_renaming ? 28u : 20u)) {
+            field.push_back(static_cast<char>(ch));
+            if (searching) applyFilter();
+        }
+        return;
+    }
+
     if (event.type == sf::Event::MouseMoved) {
         m_mouse = window.mapPixelToCoords({ event.mouseMove.x, event.mouseMove.y });
         m_hoverCard = cardUnder(m_mouse);
@@ -2698,7 +2859,7 @@ void DeckEditState::handleEvent(const sf::Event& event, const sf::RenderWindow& 
         m_clearButton.setHovered(m_clearButton.contains(m_mouse));
 
     } else if (event.type == sf::Event::MouseWheelScrolled) {
-        const int rows = (static_cast<int>(m_pool.size()) + kCols - 1) / kCols;
+        const int rows = (static_cast<int>(m_shown.size()) + kCols - 1) / kCols;
         const int maxScroll = std::max(0, rows - kRows);
         m_scroll = std::clamp(m_scroll - static_cast<int>(event.mouseWheelScroll.delta),
                               0, maxScroll);
@@ -2721,11 +2882,32 @@ void DeckEditState::handleEvent(const sf::Event& event, const sf::RenderWindow& 
         const int row = rowUnder(p);
         if (row >= 0) { removeCard(m_order[static_cast<size_t>(row)]); return; }
 
+        // Focus follows the click, and lands nowhere by default.
+        m_renaming = nameField().contains(p);
+        if (m_renaming) return;
+
+        if (searchField().contains(p)) { return; }
+        for (int chip = 0; chip < 4; ++chip) {
+            if (!chipRect(chip).contains(p)) continue;
+            m_show = static_cast<Show>(chip);
+            applyFilter();
+            return;
+        }
+        for (int chip = 0; chip < 3; ++chip) {
+            if (!roleChipRect(chip).contains(p)) continue;
+            m_roleFilter = chip - 1;    // 0 -> both, 1 -> primary, 2 -> secondary
+            applyFilter();
+            return;
+        }
+
         if (m_backButton.contains(p)) {
-            m_stateManager.changeState(std::make_unique<MenuState>(m_stateManager, m_font));
+            m_stateManager.changeState(std::make_unique<DeckListState>(m_stateManager, m_font));
         } else if (m_saveButton.contains(p)) {
-            DeckStore::store(m_primary, m_secondary, asConfiguration().cards);
-            m_stateManager.changeState(std::make_unique<MenuState>(m_stateManager, m_font));
+            // Saving keeps the id, so editing a deck twice does not leave two
+            // copies behind; a deck that has never been saved mints one.
+            m_deckId = DeckStore::store(m_deckId, m_deckName, m_primary, m_secondary,
+                                        asConfiguration().cards);
+            m_stateManager.changeState(std::make_unique<DeckListState>(m_stateManager, m_font));
         } else if (m_autoButton.contains(p)) {
             setFromConfiguration(DeckBuilder::build(m_primary, m_secondary));
             refreshButtons();
@@ -2738,7 +2920,9 @@ void DeckEditState::handleEvent(const sf::Event& event, const sf::RenderWindow& 
 
     } else if (event.type == sf::Event::KeyPressed &&
                event.key.code == sf::Keyboard::Escape) {
-        m_stateManager.changeState(std::make_unique<MenuState>(m_stateManager, m_font));
+        if (m_renaming) { m_renaming = false; return; }
+        if (!m_search.empty()) { m_search.clear(); applyFilter(); return; }
+        m_stateManager.changeState(std::make_unique<DeckListState>(m_stateManager, m_font));
     }
 }
 
@@ -2757,37 +2941,98 @@ void DeckEditState::renderHeader(sf::RenderTarget& target) {
     edge.setFillColor(sf::Color(84, 88, 98, 200));
     target.draw(edge);
 
-    drawLabel(target, "DECK BUILDER", { 560.0f, 12.0f }, 19, sf::Color(236, 214, 178), 3.4f, true);
+    drawLabel(target, "DECK BUILDER", { 560.0f, 8.0f }, 17, sf::Color(236, 214, 178), 3.4f, true);
 
     CardData probeP, probeS;
     probeP.role = m_primary;
     probeS.role = m_secondary;
-    drawLabel(target, displayName(m_primary), { 560.0f, 36.0f }, 12,
+    drawLabel(target, displayName(m_primary), { 560.0f, 30.0f }, 11,
               CardArt::accentFor(probeP), 1.6f, true);
-    drawLabel(target, "/", { 560.0f + 86.0f, 36.0f }, 12, sf::Color(120, 120, 128));
-    drawLabel(target, displayName(m_secondary), { 560.0f + 100.0f, 36.0f }, 12,
+    drawLabel(target, "/", { 560.0f + 80.0f, 30.0f }, 11, sf::Color(120, 120, 128));
+    drawLabel(target, displayName(m_secondary), { 560.0f + 92.0f, 30.0f }, 11,
               CardArt::accentFor(probeS), 1.6f);
 
+    // ---- the filter strip -------------------------------------------------
+    // Two rows of chips would cost a row of cards, so the core filter sits on
+    // the left of the same strip as the search box and the kind filter.
+    const char* roleNames[3] = { "BOTH", displayName(m_primary), displayName(m_secondary) };
+    for (int chip = 0; chip < 3; ++chip) {
+        const sf::FloatRect box = roleChipRect(chip);
+        const bool on = m_roleFilter == chip - 1;
+        CardData probe;
+        probe.role = chip == 2 ? m_secondary : m_primary;
+        const sf::Color accent = chip == 0 ? sf::Color(170, 176, 190)
+                                           : CardArt::accentFor(probe);
+        drawPanel(target, box,
+                  on ? sf::Color(accent.r / 4 + 22, accent.g / 4 + 20, accent.b / 5 + 18, 245)
+                     : sf::Color(18, 20, 26, 225),
+                  on ? accent : sf::Color(74, 78, 88, 190));
+        drawLabel(target, roleNames[chip], { box.left + 7.0f, box.top + 7.0f }, 10,
+                  on ? accent : sf::Color(150, 154, 164), 1.2f, on);
+    }
+
+    const sf::FloatRect search = searchField();
+    const bool typing = !m_renaming;
+    drawPanel(target, search, sf::Color(16, 18, 24, 245),
+              typing && !m_search.empty() ? sf::Color(200, 176, 110)
+                                          : sf::Color(78, 82, 92, 200));
+    drawLabel(target, m_search.empty() ? "SEARCH BY NAME" : m_search,
+              { search.left + 9.0f, search.top + 7.0f }, 11,
+              m_search.empty() ? sf::Color(104, 108, 118) : sf::Color(232, 226, 214), 1.2f);
+    if (typing) {
+        // A caret only where the typing would actually land.
+        const float blink = std::fmod(m_time, 1.0f) < 0.55f ? 1.0f : 0.0f;
+        if (blink > 0.0f && !m_search.empty()) {
+            sf::Text probe;
+            probe.setFont(Fonts::ui());
+            probe.setString(m_search);
+            probe.setCharacterSize(11);
+            probe.setLetterSpacing(1.2f);
+            sf::RectangleShape caret({ 1.0f, 13.0f });
+            caret.setPosition(search.left + 11.0f + probe.getLocalBounds().width,
+                              search.top + 7.0f);
+            caret.setFillColor(sf::Color(236, 214, 178));
+            target.draw(caret);
+        }
+    }
+
+    const char* chips[4] = { "ALL", "UNITS", "SPELLS", "COUNTERS" };
+    for (int chip = 0; chip < 4; ++chip) {
+        const sf::FloatRect box = chipRect(chip);
+        const bool on = static_cast<int>(m_show) == chip;
+        drawPanel(target, box,
+                  on ? sf::Color(34, 38, 48, 245) : sf::Color(18, 20, 26, 225),
+                  on ? sf::Color(226, 190, 120) : sf::Color(74, 78, 88, 190));
+        drawLabel(target, chips[chip], { box.left + 7.0f, box.top + 7.0f }, 10,
+                  on ? sf::Color(240, 214, 160) : sf::Color(150, 154, 164), 1.2f, on);
+    }
+
     // Scroll position, so a pool that runs past one screen says so.
-    const int rows = (static_cast<int>(m_pool.size()) + kCols - 1) / kCols;
+    const int rows = (static_cast<int>(m_shown.size()) + kCols - 1) / kCols;
     if (rows > kRows) {
         std::ostringstream page;
-        page << "SCROLL  " << (m_scroll + 1) << " / " << (rows - kRows + 1);
-        drawLabel(target, page.str(), { 300.0f, 22.0f }, 11, sf::Color(130, 134, 144), 2.0f);
+        page << (m_scroll + 1) << " / " << (rows - kRows + 1);
+        drawLabel(target, page.str(), { 1196.0f, 16.0f }, 11, sf::Color(130, 134, 144), 2.0f);
     }
 
     if (m_noticeTimer > 0.0f && !m_notice.empty()) {
         const float fade = std::min(1.0f, m_noticeTimer / 0.6f);
-        drawLabel(target, m_notice, { 300.0f, 690.0f }, 13,
+        drawLabel(target, m_notice, { kGridX, 678.0f }, 12,
                   sf::Color(232, 150, 120, static_cast<sf::Uint8>(235 * fade)), 1.2f, true);
     }
 }
 
 void DeckEditState::renderGrid(sf::RenderTarget& target) {
+    if (m_shown.empty()) {
+        drawLabel(target, "No card matches that filter",
+                  { kGridX + 10.0f, kGridY + 40.0f }, 15, sf::Color(130, 134, 144), 1.6f);
+        return;
+    }
     const int first = m_scroll * kCols;
     for (int i = 0; i < kCols * kRows; ++i) {
-        const int index = first + i;
-        if (index >= static_cast<int>(m_pool.size())) break;
+        const int slot = first + i;
+        if (slot >= static_cast<int>(m_shown.size())) break;
+        const int index = m_shown[static_cast<size_t>(slot)];
 
         const CardData& card = m_pool[static_cast<size_t>(index)];
         const sf::FloatRect cell = cellAt(i);
@@ -2826,6 +3071,32 @@ void DeckEditState::renderGrid(sf::RenderTarget& target) {
 }
 
 void DeckEditState::renderList(sf::RenderTarget& target) {
+    // The deck's name is a field, not a caption: a list of decks is only useful
+    // if the decks can be told apart, and "Vanguard / Siege 3" tells you
+    // nothing you did not already know.
+    const sf::FloatRect field = nameField();
+    drawPanel(target, field, sf::Color(16, 18, 24, 246),
+              m_renaming ? sf::Color(236, 190, 74) : sf::Color(84, 88, 100, 200));
+    drawLabel(target, m_deckName.empty() ? "UNNAMED DECK" : m_deckName,
+              { field.left + 10.0f, field.top + 8.0f }, 12,
+              m_deckName.empty() ? sf::Color(110, 114, 124) : sf::Color(234, 226, 210),
+              1.4f, true);
+    if (m_renaming && std::fmod(m_time, 1.0f) < 0.55f) {
+        sf::Text probe;
+        probe.setFont(Fonts::ui());
+        probe.setString(m_deckName);
+        probe.setCharacterSize(12);
+        probe.setLetterSpacing(1.4f);
+        sf::RectangleShape caret({ 1.0f, 14.0f });
+        caret.setPosition(field.left + 12.0f + probe.getLocalBounds().width, field.top + 8.0f);
+        caret.setFillColor(sf::Color(236, 214, 178));
+        target.draw(caret);
+    } else if (!m_renaming) {
+        drawLabel(target, "CLICK TO RENAME",
+                  { field.left + field.width - 96.0f, field.top + 9.0f }, 9,
+                  sf::Color(96, 100, 110), 1.2f);
+    }
+
     const sf::FloatRect panel = listPanel();
     drawPanel(target, panel, sf::Color(12, 14, 20, 242), sf::Color(92, 96, 108, 200));
 
@@ -2923,6 +3194,39 @@ void DeckEditState::renderList(sf::RenderTarget& target) {
                   { panel.left + 14.0f, footY + 32.0f }, 10,
                   sf::Color(212, 126, 116), 1.2f);
     }
+
+    renderRowPreview(target);
+}
+
+void DeckEditState::renderRowPreview(sf::RenderTarget& target) const {
+    // The deck has to be a text list: twenty-four cards will not fit on screen
+    // as pictures, and the list is read as a curve rather than looked at. So
+    // the picture arrives on hover instead of replacing the list.
+    if (m_hoverRow < 0 || m_hoverRow >= static_cast<int>(m_order.size())) return;
+    const CardData* card = DataLoader::findCard(m_order[static_cast<size_t>(m_hoverRow)]);
+    if (!card) return;
+
+    const sf::Vector2f size{ 246.0f, 338.0f };
+    const sf::FloatRect panel = listPanel();
+    // Left of the panel, and vertically level with the row being pointed at,
+    // so the eye does not have to travel to find what it asked for.
+    // Kept below the filter strip and above the screen edge. Without the upper
+    // bound the preview climbed over the chips it is nothing to do with.
+    const float topLimit = kGridY + size.y / 2.0f - 4.0f;
+    const float centreY = std::clamp(rowRect(m_hoverRow).top + 10.0f,
+                                     topLimit, 720.0f - size.y / 2.0f - 8.0f);
+    const sf::Vector2f centre{ panel.left - size.x / 2.0f - 18.0f, centreY };
+
+    // A shadow plate so the card never has to compete with the grid behind it.
+    sf::RectangleShape shade({ size.x + 18.0f, size.y + 18.0f });
+    shade.setOrigin(shade.getSize().x / 2.0f, shade.getSize().y / 2.0f);
+    shade.setPosition(centre);
+    shade.setFillColor(sf::Color(6, 7, 11, 232));
+    shade.setOutlineThickness(1.0f);
+    shade.setOutlineColor(sf::Color(120, 112, 96, 200));
+    target.draw(shade);
+
+    CardArt::drawCard(target, m_font, *card, centre, size, 0.0f, true, true);
 }
 
 void DeckEditState::render(sf::RenderTarget& target) {
@@ -2949,6 +3253,274 @@ void DeckEditState::render(sf::RenderTarget& target) {
         target.draw(halo);
     }
     m_saveButton.render(target);
+}
+
+
+// =============================================================================
+// DeckListState implementation
+// =============================================================================
+
+DeckListState::DeckListState(StateManager& sm, const sf::Font& font)
+    : m_stateManager(sm), m_font(font) {
+    m_decks = DeckStore::all();   // a copy: the store is rewritten under us on delete
+    m_backButton.setup(font, "BACK", { 110.0f, 30.0f }, { 150.0f, 34.0f },
+                       sf::Color(160, 150, 136), 14);
+    AudioManager::get().playMusicCue(AudioManager::Cue::MusicMenu);
+}
+
+sf::FloatRect DeckListState::tileAt(int slot) const {
+    const int col = slot % kCols;
+    const int row = slot / kCols;
+    return { kGridX + col * (kTileW + kGapX), kGridY + row * (kTileH + kGapY), kTileW, kTileH };
+}
+
+sf::FloatRect DeckListState::deleteAt(int slot) const {
+    const sf::FloatRect tile = tileAt(slot);
+    return { tile.left + tile.width - 26.0f, tile.top + 6.0f, 20.0f, 20.0f };
+}
+
+int DeckListState::slotUnder(sf::Vector2f point) const {
+    const int slots = static_cast<int>(m_decks.size()) + 1;
+    for (int slot = 0; slot < slots; ++slot) {
+        if (tileAt(slot).contains(point)) return slot;
+    }
+    return -1;
+}
+
+bool DeckListState::isInUse(const DeckStore::SavedDeck& deck) const {
+    const DeckStore::SavedDeck* newest = DeckStore::newestFor(deck.primary, deck.secondary);
+    return newest && newest->id == deck.id;
+}
+
+void DeckListState::drawNewTile(sf::RenderTarget& target) const {
+    const sf::FloatRect tile = tileAt(0);
+    const bool hot = m_hovered == 0;
+    drawPanel(target, tile,
+              hot ? sf::Color(26, 32, 44, 245) : sf::Color(15, 18, 26, 235),
+              hot ? sf::Color(226, 190, 120) : sf::Color(86, 92, 104, 200));
+
+    // A plus sign, drawn rather than typed: a glyph at this size sits on the
+    // baseline and reads as a letter.
+    const sf::Vector2f centre{ tile.left + tile.width / 2.0f, tile.top + tile.height / 2.0f - 12.0f };
+    const sf::Color ink = hot ? sf::Color(240, 214, 160) : sf::Color(150, 156, 168);
+    for (int arm = 0; arm < 2; ++arm) {
+        sf::RectangleShape bar(arm == 0 ? sf::Vector2f{ 46.0f, 5.0f } : sf::Vector2f{ 5.0f, 46.0f });
+        bar.setOrigin(bar.getSize().x / 2.0f, bar.getSize().y / 2.0f);
+        bar.setPosition(centre);
+        bar.setFillColor(ink);
+        target.draw(bar);
+    }
+    drawLabel(target, "NEW DECK",
+              { tile.left + 14.0f, tile.top + tile.height - 44.0f }, 15, ink, 3.0f, true);
+    drawLabel(target, "pick two cores, then build",
+              { tile.left + 14.0f, tile.top + tile.height - 24.0f }, 10,
+              sf::Color(112, 118, 130), 1.2f);
+}
+
+void DeckListState::drawDeckTile(sf::RenderTarget& target, int index) const {
+    const DeckStore::SavedDeck& deck = m_decks[static_cast<size_t>(index)];
+    const int slot = index + 1;
+    const sf::FloatRect tile = tileAt(slot);
+    const bool hot = m_hovered == slot;
+
+    CardData probeP, probeS;
+    probeP.role = deck.primary;
+    probeS.role = deck.secondary;
+    const sf::Color accentP = CardArt::accentFor(probeP);
+    const sf::Color accentS = CardArt::accentFor(probeS);
+
+    drawPanel(target, tile,
+              hot ? sf::Color(accentP.r / 7 + 24, accentP.g / 7 + 26, accentP.b / 8 + 32, 246)
+                  : sf::Color(14, 16, 22, 238),
+              hot ? accentP : sf::Color(86, 92, 104, 200));
+
+    // A broad band of the primary colour across the top, a thin one of the
+    // secondary under it: the tile is identifiable across the room, which is
+    // the job a deck tile actually has.
+    sf::RectangleShape band({ tile.width - 2.0f, 46.0f });
+    band.setPosition(tile.left + 1.0f, tile.top + 1.0f);
+    band.setFillColor(sf::Color(accentP.r / 3 + 14, accentP.g / 3 + 14, accentP.b / 3 + 16, 240));
+    target.draw(band);
+    sf::RectangleShape under({ tile.width - 2.0f, 4.0f });
+    under.setPosition(tile.left + 1.0f, tile.top + 47.0f);
+    under.setFillColor(accentS);
+    target.draw(under);
+
+    drawLabel(target, displayName(deck.primary), { tile.left + 12.0f, tile.top + 10.0f }, 13,
+              accentP, 1.8f, true);
+    drawLabel(target, std::string("+ ") + displayName(deck.secondary),
+              { tile.left + 12.0f, tile.top + 28.0f }, 10,
+              sf::Color(accentS.r, accentS.g, accentS.b, 225), 1.2f);
+
+    // The doctrine emblem, large and faint, as the tile's "art".
+    {
+        sf::ConvexShape dummy;   // keep the glyph helper's scope local
+        (void)dummy;
+    }
+
+    drawLabel(target, deck.name, { tile.left + 12.0f, tile.top + 76.0f }, 14,
+              sf::Color(234, 228, 216), 1.2f, true);
+
+    // What is actually in it, counted from the catalogue rather than trusted
+    // from the file.
+    int units = 0, spells = 0, counters = 0;
+    for (const std::string& id : deck.cardIds) {
+        const CardData* card = DataLoader::findCard(id);
+        if (!card) continue;
+        if (card->category == CardCategory::Spell) ++spells;
+        else if (card->category == CardCategory::Trap) ++counters;
+        else ++units;
+    }
+    const int total = units + spells + counters;
+
+    std::ostringstream mix;
+    mix << units << " units   " << spells << " spells   " << counters << " counters";
+    drawLabel(target, mix.str(), { tile.left + 12.0f, tile.top + 104.0f }, 10,
+              sf::Color(158, 164, 176), 1.2f);
+
+    std::ostringstream size;
+    size << total << " / " << DeckRules::kDeckSize;
+    drawLabel(target, size.str(), { tile.left + 12.0f, tile.top + 126.0f }, 16,
+              total == DeckRules::kDeckSize ? sf::Color(150, 226, 160) : sf::Color(226, 150, 120),
+              1.4f, true);
+
+    // A stacked bar of the two cores, the same device the core-select screen
+    // uses, so the two screens describe a deck the same way.
+    int primaryCount = 0;
+    for (const std::string& id : deck.cardIds) {
+        const CardData* card = DataLoader::findCard(id);
+        if (card && card->role == deck.primary) ++primaryCount;
+    }
+    const sf::FloatRect bar{ tile.left + 12.0f, tile.top + 156.0f, tile.width - 24.0f, 10.0f };
+    drawPanel(target, bar, sf::Color(10, 12, 16, 235), sf::Color(64, 68, 78, 180));
+    if (total > 0) {
+        const float inner = bar.width - 4.0f;
+        const float w = inner * static_cast<float>(primaryCount) / static_cast<float>(total);
+        sf::RectangleShape segP({ w, bar.height - 4.0f });
+        segP.setPosition(bar.left + 2.0f, bar.top + 2.0f);
+        segP.setFillColor(accentP);
+        target.draw(segP);
+        sf::RectangleShape segS({ inner - w, bar.height - 4.0f });
+        segS.setPosition(bar.left + 2.0f + w, bar.top + 2.0f);
+        segS.setFillColor(sf::Color(accentS.r, accentS.g, accentS.b, 205));
+        target.draw(segS);
+    }
+
+    if (isInUse(deck)) {
+        const sf::FloatRect badge{ tile.left + 12.0f, tile.top + tile.height - 36.0f, 74.0f, 20.0f };
+        drawPanel(target, badge, sf::Color(28, 40, 28, 245), sf::Color(140, 210, 150));
+        drawLabel(target, "IN USE", { badge.left + 10.0f, badge.top + 4.0f }, 10,
+                  sf::Color(160, 226, 172), 1.4f, true);
+    } else {
+        drawLabel(target, "a newer deck on these cores is in use",
+                  { tile.left + 12.0f, tile.top + tile.height - 30.0f }, 9,
+                  sf::Color(110, 116, 126), 1.0f);
+    }
+
+    // Delete, armed by the first click and done by the second. A deck is a lot
+    // of work to lose to a stray cursor.
+    const sf::FloatRect x = deleteAt(slot);
+    const bool armed = m_deleteArmed == slot;
+    if (hot || armed) {
+        drawPanel(target, x, armed ? sf::Color(120, 30, 30, 246) : sf::Color(26, 24, 28, 235),
+                  armed ? sf::Color(240, 140, 130) : sf::Color(130, 120, 120, 200));
+        drawLabel(target, "X", { x.left + 7.0f, x.top + 4.0f }, 11,
+                  armed ? sf::Color(255, 208, 200) : sf::Color(196, 186, 186), 1.0f, true);
+    }
+    if (armed) {
+        drawLabel(target, "CLICK AGAIN TO DELETE",
+                  { tile.left + 12.0f, tile.top + 56.0f }, 10,
+                  sf::Color(244, 150, 140), 1.4f, true);
+    }
+}
+
+void DeckListState::handleEvent(const sf::Event& event, const sf::RenderWindow& window) {
+    if (event.type == sf::Event::MouseMoved) {
+        m_mouse = window.mapPixelToCoords({ event.mouseMove.x, event.mouseMove.y });
+        const int was = m_hovered;
+        m_hovered = slotUnder(m_mouse);
+        // Leaving a tile disarms its delete, so an armed X cannot be triggered
+        // later by a click meant for something else.
+        if (m_hovered != was && m_deleteArmed != m_hovered) m_deleteArmed = -1;
+        m_backButton.setHovered(m_backButton.contains(m_mouse));
+
+    } else if (event.type == sf::Event::MouseButtonPressed &&
+               event.mouseButton.button == sf::Mouse::Left) {
+        const sf::Vector2f p = window.mapPixelToCoords({ event.mouseButton.x, event.mouseButton.y });
+
+        if (m_backButton.contains(p)) {
+            m_stateManager.changeState(std::make_unique<MenuState>(m_stateManager, m_font));
+            return;
+        }
+
+        const int slot = slotUnder(p);
+        if (slot < 0) { m_deleteArmed = -1; return; }
+
+        if (slot > 0 && deleteAt(slot).contains(p)) {
+            if (m_deleteArmed == slot) {
+                DeckStore::remove(m_decks[static_cast<size_t>(slot - 1)].id);
+                m_decks = DeckStore::all();
+                m_deleteArmed = -1;
+                m_hovered = -1;
+            } else {
+                m_deleteArmed = slot;
+            }
+            return;
+        }
+        m_deleteArmed = -1;
+
+        if (slot == 0) {
+            m_stateManager.changeState(std::make_unique<RoleSelectState>(
+                m_stateManager, m_font, RoleSelectState::Then::EditDeck));
+        } else {
+            m_stateManager.changeState(std::make_unique<DeckEditState>(
+                m_stateManager, m_font, m_decks[static_cast<size_t>(slot - 1)]));
+        }
+
+    } else if (event.type == sf::Event::KeyPressed &&
+               event.key.code == sf::Keyboard::Escape) {
+        m_stateManager.changeState(std::make_unique<MenuState>(m_stateManager, m_font));
+    }
+}
+
+void DeckListState::render(sf::RenderTarget& target) {
+    sf::RectangleShape backdrop({ 1280.0f, 720.0f });
+    backdrop.setFillColor(sf::Color(11, 12, 16));
+    target.draw(backdrop);
+
+    sf::RectangleShape bar({ 1280.0f, 54.0f });
+    bar.setFillColor(sf::Color(16, 18, 24, 248));
+    target.draw(bar);
+    sf::RectangleShape edge({ 1280.0f, 1.0f });
+    edge.setPosition(0.0f, 54.0f);
+    edge.setFillColor(sf::Color(84, 88, 98, 200));
+    target.draw(edge);
+
+    drawLabel(target, "YOUR DECKS", { 566.0f, 18.0f }, 19, sf::Color(236, 214, 178), 3.4f, true);
+
+    std::ostringstream count;
+    count << m_decks.size() << (m_decks.size() == 1 ? " deck saved" : " decks saved");
+    drawLabel(target, count.str(), { 300.0f, 22.0f }, 11, sf::Color(130, 134, 144), 1.6f);
+
+    drawLabel(target,
+              "A run uses the newest deck built on the two cores you pick, or the "
+              "generated deck when you have built none.",
+              { kGridX, 84.0f }, 11, sf::Color(126, 132, 144), 1.2f);
+
+    drawNewTile(target);
+    for (int i = 0; i < static_cast<int>(m_decks.size()); ++i) {
+        // Four across, two rows deep. Beyond eight decks the rest are off the
+        // bottom - a scroll bar here is work for a case that does not exist yet.
+        if (i + 1 >= kCols * 2) break;
+        drawDeckTile(target, i);
+    }
+    if (static_cast<int>(m_decks.size()) + 1 > kCols * 2) {
+        std::ostringstream more;
+        more << (static_cast<int>(m_decks.size()) + 1 - kCols * 2) << " more not shown";
+        drawLabel(target, more.str(), { kGridX, 690.0f }, 11, sf::Color(150, 130, 110), 1.4f);
+    }
+
+    m_backButton.render(target);
 }
 
 // =============================================================================

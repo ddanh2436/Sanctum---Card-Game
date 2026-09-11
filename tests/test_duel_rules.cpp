@@ -99,10 +99,10 @@ void reachEnergy(DuelEngine& duel, Side side, int cap) {
 }
 
 
-/// A saved deck has to survive a round trip through the file, and a saved deck
-/// that no longer matches the catalogue has to fall back rather than hand the
-/// duel a deck with holes in it. Both matter because this file outlives the
-/// version of the game that wrote it.
+/// A saved deck has to survive a round trip through the file, several decks
+/// have to coexist on one pair of cores, and a deck that no longer matches the
+/// catalogue has to fall back rather than hand the duel a deck with holes in
+/// it. All three matter because this file outlives the version that wrote it.
 void test_saved_decks_round_trip_and_fall_back() {
     const char* path = "test_custom_decks.json";
     std::remove(path);
@@ -111,10 +111,14 @@ void test_saved_decks_round_trip_and_fall_back() {
     CHECK(generated.isValidDeck());
 
     DeckStore::load(path);
-    DeckStore::store(MechRole::Vanguard, MechRole::Siege, generated.cards);
+    const std::string id = DeckStore::store("", "Test List",
+                                            MechRole::Vanguard, MechRole::Siege,
+                                            generated.cards);
+    CHECK(!id.empty());
 
-    const DeckStore::SavedDeck* saved = DeckStore::find(MechRole::Vanguard, MechRole::Siege);
+    const DeckStore::SavedDeck* saved = DeckStore::find(id);
     CHECK(saved != nullptr);
+    CHECK(saved->name == "Test List");
     CHECK(static_cast<int>(saved->cardIds.size()) == DeckRules::kDeckSize);
 
     const DeckConfiguration restored =
@@ -125,25 +129,35 @@ void test_saved_decks_round_trip_and_fall_back() {
         CHECK(restored.cards[i].id == generated.cards[i].id);
     }
 
+    // Two decks on the same pair coexist, and a suggested name never collides
+    // with one already in use.
+    const std::string second = DeckStore::store("", "", MechRole::Vanguard,
+                                                MechRole::Siege, generated.cards);
+    CHECK(second != id);
+    CHECK(DeckStore::find(second) != nullptr);
+    CHECK(DeckStore::find(id) != nullptr);
+    CHECK(DeckStore::find(second)->name != DeckStore::find(id)->name);
+    CHECK(static_cast<int>(DeckStore::all().size()) == 2);
+
     // A pair the player never touched still gets the generated deck.
     const DeckConfiguration untouched =
         DeckStore::configurationFor(MechRole::Dragoon, MechRole::Valkyrie);
     CHECK(untouched.isValidDeck());
-    CHECK(DeckStore::find(MechRole::Dragoon, MechRole::Valkyrie) == nullptr);
+    CHECK(DeckStore::newestFor(MechRole::Dragoon, MechRole::Valkyrie) == nullptr);
 
-    // Now break it the way a catalogue change would: an id that no longer
-    // exists. The deck comes back short, fails validation, and the generated
-    // deck has to take over.
+    // Break one the way a catalogue change would: short by three cards. It
+    // fails validation, and the generated deck has to take over.
     std::vector<CardData> broken = generated.cards;
     broken.resize(broken.size() - 3);
-    DeckStore::store(MechRole::Vanguard, MechRole::Siege, broken);
+    DeckStore::store(second, "Broken", MechRole::Vanguard, MechRole::Siege, broken);
     const DeckConfiguration fallback =
         DeckStore::configurationFor(MechRole::Vanguard, MechRole::Siege);
     CHECK(fallback.isValidDeck());
     CHECK(static_cast<int>(fallback.cards.size()) == DeckRules::kDeckSize);
 
-    DeckStore::clear(MechRole::Vanguard, MechRole::Siege);
-    CHECK(DeckStore::find(MechRole::Vanguard, MechRole::Siege) == nullptr);
+    DeckStore::remove(second);
+    DeckStore::remove(id);
+    CHECK(DeckStore::all().empty());
     std::remove(path);
     std::printf("[PASS] test_saved_decks_round_trip_and_fall_back\n");
 }
