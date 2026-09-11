@@ -6,6 +6,7 @@
 #include "battle/DuelEngine.hpp"
 #include "run/DeckBuilder.hpp"
 #include "run/RunState.hpp"
+#include "utils/Settings.hpp"
 #include "utils/DataLoader.hpp"
 #include "utils/Rng.hpp"
 #include <iostream>
@@ -68,7 +69,7 @@ SimResult simulateDuel(unsigned int seed, int encounterIndex = 0, int maxTurns =
     foe.deck = run.buildOpponentDeck();
     foe.primary = encounter.primary;
     foe.secondary = encounter.secondary;
-    foe.hp = encounter.commanderHp;
+    foe.hp = RunState::reactorFor(encounter);
     foe.name = encounter.name;
 
     DuelEngine duel;
@@ -165,6 +166,40 @@ double opponentPairingRate(MechRole foePrimary, MechRole foeSecondary,
     return 100.0 * wins / runs;
 }
 
+
+/// The difficulty setting has to actually move the numbers, in the right
+/// direction, or it is three words that do nothing. Reported rather than
+/// asserted on every fight: what matters is the ordering across the campaign,
+/// not any single encounter's rate.
+void report_difficulty_setting() {
+    std::cout << "Difficulty sweep (40 duels per fight):\n";
+    const int was = Settings::get().difficulty;
+    double overall[3] = { 0.0, 0.0, 0.0 };
+
+    for (int level = 0; level < 3; ++level) {
+        Settings::get().difficulty = level;
+        std::cout << "  " << Settings::difficultyName(level) << "\t";
+        double sum = 0.0;
+        for (int encounter = 0; encounter < RunState::kEncounters; ++encounter) {
+            int wins = 0;
+            for (unsigned int seed = 1; seed <= 40; ++seed) {
+                if (simulateDuel(seed * 7 + static_cast<unsigned>(encounter),
+                                 encounter).playerWon) ++wins;
+            }
+            const double rate = wins / 40.0;
+            sum += rate;
+            std::cout << static_cast<int>(rate * 100.0) << "%\t";
+        }
+        overall[level] = sum / RunState::kEncounters;
+        std::cout << " mean " << static_cast<int>(overall[level] * 100.0) << "%\n";
+    }
+    Settings::get().difficulty = was;
+
+    CHECK_MSG(overall[0] > overall[2],
+              "Recruit has to be easier than Warlord, or the setting does nothing");
+    std::printf("[PASS] report_difficulty_setting\n");
+}
+
 } // namespace
 
 void test_single_duel_plays_out() {
@@ -193,10 +228,9 @@ void test_traps_and_titans_actually_see_play() {
     int traps = 0;
     int games = 0;
     int probeSet = 0;
-    // Measured with a deck that actually HAS counter-protocols. Only three of the
-    // six doctrines carry any - Paladin, Valkyrie and Siege have none at all - so
-    // running this against the default reference pairing was asserting that a
-    // deck holding zero traps flips one.
+    // Measured against a deck built to lean on counters. Every doctrine carries
+    // some now - Arclight, Siege and Valkyrie used to carry none at all, which
+    // meant six of the thirty core pairings could field a deck with zero.
     for (unsigned int seed = 1; seed <= 60; ++seed) {
         SimResult r = simulateDuel(seed, 3, 60, false,
                                    MechRole::Inquisitor, MechRole::Dragoon);
@@ -452,6 +486,7 @@ int main() {
     // Diagnostics before assertions: when the curve test trips, the sweep it
     // would have printed is exactly what tells you which rung to move.
     report_opponent_difficulty();
+    report_difficulty_setting();
     test_difficulty_curve_rises();
     test_no_pairing_is_dead_on_arrival();
 

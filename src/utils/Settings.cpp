@@ -22,6 +22,7 @@ void Settings::clampAll() {
     enemyTurnSpeed = std::clamp(enemyTurnSpeed, 0.5f, 3.0f);
     windowWidth = std::clamp(windowWidth, 960, 3840);
     windowHeight = std::clamp(windowHeight, 540, 2160);
+    difficulty = std::clamp(difficulty, 0, 2);
 }
 
 void Settings::load(const std::string& path) {
@@ -54,6 +55,7 @@ void Settings::load(const std::string& path) {
     enemyTurnSpeed = root.value("enemyTurnSpeed", enemyTurnSpeed);
     showBattleLog  = root.value("showBattleLog", showBattleLog);
     avatar         = root.value("avatar", avatar);
+    difficulty     = root.value("difficulty", difficulty);
 
     clampAll();
 }
@@ -72,6 +74,7 @@ void Settings::save(const std::string& path) const {
     root["enemyTurnSpeed"] = enemyTurnSpeed;
     root["showBattleLog"]  = showBattleLog;
     root["avatar"]         = avatar;
+    root["difficulty"]    = difficulty;
 
     std::ofstream file(path);
     if (!file.is_open()) {

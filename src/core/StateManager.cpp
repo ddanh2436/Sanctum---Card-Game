@@ -203,6 +203,33 @@ struct UiSlider {
 };
 
 /// A labelled on/off row.
+/**
+ * @brief One of N named settings, as a segmented row.
+ *
+ * A toggle cannot say "Recruit / Knight / Warlord" and a slider would show the
+ * number rather than the word. Three segments name themselves, which is what a
+ * difficulty control has to do: nobody should have to guess whether 2 is harder
+ * than 0.
+ */
+struct UiChoice {
+    sf::FloatRect box;              // the whole segmented row
+    std::string label;
+    int* value = nullptr;
+    int count = 3;
+    const char* (*nameOf)(int) = nullptr;
+
+    sf::FloatRect segment(int index) const {
+        const float w = box.width / static_cast<float>(count);
+        return { box.left + index * w, box.top, w, box.height };
+    }
+    int hit(sf::Vector2f p) const {
+        for (int i = 0; i < count; ++i) {
+            if (segment(i).contains(p)) return i;
+        }
+        return -1;
+    }
+};
+
 struct UiToggle {
     sf::FloatRect box;
     std::string label;
@@ -1256,6 +1283,9 @@ private:
     std::deque<std::string> m_log;
     /// The log is a panel behind a button now, not a permanent column of text
     /// down the left edge competing with the board for attention.
+    /// Follows the setting: turning the battle log off hides the button as
+    /// well as the panel. The toggle used to be written by the settings screen
+    /// and read by nobody, so it did nothing at all.
     bool m_logOpen = false;
     UiButton m_endTurnButton;
     float m_bannerTimer = 0.0f;
@@ -1460,15 +1490,19 @@ private:
 
     std::vector<UiSlider> m_sliders;
     std::vector<UiToggle> m_toggles;
+    std::vector<UiChoice> m_choices;
+    int m_hoveredChoice = -1;
     UiButton m_backButton;
     UiButton m_defaultsButton;
     int m_hoveredSlider = -1;
     int m_hoveredToggle = -1;
 
     static constexpr float kPanelX = 350.0f;
-    static constexpr float kPanelY = 60.0f;
+    static constexpr float kPanelY = 38.0f;
     static constexpr float kPanelW = 580.0f;
-    static constexpr float kPanelH = 620.0f;
+    // 660, not 620: the panel gained a segmented difficulty row and the hint
+    // line at the bottom was printing straight over it.
+    static constexpr float kPanelH = 660.0f;
 
 public:
     SettingsState(StateManager& sm, const sf::Font& font);
@@ -1497,6 +1531,7 @@ void SettingsState::buildControls() {
     Settings& settings = Settings::get();
     m_sliders.clear();
     m_toggles.clear();
+    m_choices.clear();
 
     const float x = kPanelX + 34.0f;
     const float width = kPanelW - 68.0f;
@@ -1533,6 +1568,15 @@ void SettingsState::buildControls() {
     toggle("Vertical sync", &settings.vsync);
     toggle("Screen shake", &settings.screenShake);
     toggle("Battle log", &settings.showBattleLog);
+
+    y += 6.0f;
+    UiChoice difficulty;
+    difficulty.box = { x, y, 268.0f, 30.0f };
+    difficulty.label = "Difficulty";
+    difficulty.value = &settings.difficulty;
+    difficulty.count = 3;
+    difficulty.nameOf = &Settings::difficultyName;
+    m_choices.push_back(difficulty);
 }
 
 void SettingsState::close() {
@@ -1557,6 +1601,11 @@ void SettingsState::handleEvent(const sf::Event& event, const sf::RenderWindow& 
         for (size_t i = 0; i < m_toggles.size(); ++i) {
             if (m_toggles[i].hit(p)) m_hoveredToggle = static_cast<int>(i);
         }
+        m_hoveredChoice = -1;
+        for (const UiChoice& choice : m_choices) {
+            const int segment = choice.hit(p);
+            if (segment >= 0) m_hoveredChoice = segment;
+        }
         m_backButton.setHovered(m_backButton.contains(p));
         m_defaultsButton.setHovered(m_defaultsButton.contains(p));
         return;
@@ -1571,6 +1620,13 @@ void SettingsState::handleEvent(const sf::Event& event, const sf::RenderWindow& 
             slider.dragging = true;
             slider.setFromMouse(p);
             AudioManager::get().applySettings();
+            return;
+        }
+        for (UiChoice& choice : m_choices) {
+            const int segment = choice.hit(p);
+            if (segment < 0 || !choice.value) continue;
+            *choice.value = segment;
+            Settings::get().save();
             return;
         }
         for (UiToggle& toggle : m_toggles) {
@@ -1695,11 +1751,44 @@ void SettingsState::render(sf::RenderTarget& target) {
                   on ? sf::Color(214, 180, 116) : sf::Color(120, 114, 126), 2.0f);
     }
 
+    // --- segmented choices ---
+    for (const UiChoice& choice : m_choices) {
+        const int picked = choice.value ? *choice.value : 0;
+        drawLabel(target, choice.label,
+                  { choice.box.left + choice.box.width + 18.0f, choice.box.top + 7.0f }, 15,
+                  sf::Color(196, 190, 180));
+
+        for (int i = 0; i < choice.count; ++i) {
+            const sf::FloatRect seg = choice.segment(i);
+            const bool on = i == picked;
+            const bool hot = i == m_hoveredChoice;
+            sf::RectangleShape cell({ seg.width - 3.0f, seg.height });
+            cell.setPosition(seg.left + 1.5f, seg.top);
+            cell.setFillColor(on ? sf::Color(84, 66, 26) : sf::Color(30, 28, 36));
+            cell.setOutlineThickness(1.5f);
+            cell.setOutlineColor(on ? sf::Color(233, 190, 92)
+                                    : sf::Color(hot ? 130 : 84, 82, 94));
+            target.draw(cell);
+
+            const char* name = choice.nameOf ? choice.nameOf(i) : "";
+            sf::Text text;
+            text.setFont(Fonts::ui());
+            text.setString(name);
+            text.setCharacterSize(12);
+            text.setLetterSpacing(1.4f);
+            text.setStyle(on ? sf::Text::Bold : sf::Text::Regular);
+            text.setFillColor(on ? sf::Color(247, 224, 168) : sf::Color(150, 144, 156));
+            TextUtils::centerBoth(text);
+            text.setPosition(seg.left + seg.width / 2.0f, seg.top + seg.height / 2.0f);
+            target.draw(text);
+        }
+    }
+
     m_defaultsButton.render(target);
     m_backButton.render(target);
 
     drawLabel(target, "F11 toggles fullscreen anywhere  -  Esc closes this panel",
-              { kPanelX + 34.0f, kPanelY + kPanelH - 102.0f }, 12, sf::Color(126, 120, 132));
+              { kPanelX + 34.0f, kPanelY + kPanelH - 88.0f }, 11, sf::Color(126, 120, 132));
 }
 
 // =============================================================================
@@ -3695,9 +3784,10 @@ void MapState::renderYourPanel(sf::RenderTarget& target) const {
 
     const int hp = g_run.getCommanderHp();
     drawGauge(target, { textX, panel.top + 104.0f, 300.0f, 22.0f },
-              static_cast<float>(hp) / static_cast<float>(Commander::kStartingHp),
+              static_cast<float>(hp) / static_cast<float>(RunState::playerReactorCap()),
               sf::Color(74, 132, 104, 235),
-              "REACTOR  " + std::to_string(hp) + " / " + std::to_string(Commander::kStartingHp));
+              "REACTOR  " + std::to_string(hp) + " / "
+                  + std::to_string(RunState::playerReactorCap()));
 
     // --- deck composition, as a stacked bar plus chips ------------------------
     drawLabel(target, "DECK", { panel.left + 24.0f, panel.top + 164.0f }, 12,
@@ -3791,7 +3881,7 @@ void MapState::renderNextPanel(sf::RenderTarget& target) const {
 
     drawGauge(target, { textX, panel.top + 104.0f, 300.0f, 22.0f }, 1.0f,
               sf::Color(150, 58, 54, 235),
-              "REACTOR  " + std::to_string(next.commanderHp));
+              "REACTOR  " + std::to_string(RunState::reactorFor(next)));
 
     // --- what you are walking into, as facts rather than a sentence ----------
     drawLabel(target, "THREAT", { panel.left + 24.0f, panel.top + 164.0f }, 12,
@@ -3880,7 +3970,11 @@ DuelState::DuelState(StateManager& sm, const sf::Font& font)
     foe.deck = g_run.buildOpponentDeck();
     foe.primary = encounter.primary;
     foe.secondary = encounter.secondary;
-    foe.hp = encounter.commanderHp;
+    // Difficulty scales the enemy's reactor rather than the rules: a setting
+    // that changed what cards do would have the player learning a different
+    // game on each one. The rule itself lives in RunState so the duel, the map
+    // preview and the balance simulation cannot drift apart.
+    foe.hp = RunState::reactorFor(encounter);
     foe.name = encounter.name;
 
     m_duel.startDuel(std::move(you), std::move(foe));
@@ -4114,7 +4208,10 @@ void DuelState::handleEvent(const sf::Event& event, const sf::RenderWindow& wind
         if (event.mouseButton.button != sf::Mouse::Left) return;
 
         if (m_mode == Interaction::SelectingTributes) { handleTributeClick(p); return; }
-        if (Layout::logButton().contains(p)) { m_logOpen = !m_logOpen; return; }
+        if (Settings::get().showBattleLog && Layout::logButton().contains(p)) {
+            m_logOpen = !m_logOpen;
+            return;
+        }
         if (m_endTurnButton.contains(p)) { m_duel.endTurn(); consumeEvents(); return; }
         // A set counter cannot be picked up or retargeted, so a plain left click
         // on one has nothing else to mean: open it. Right click still works too,
@@ -5367,6 +5464,7 @@ void DuelState::renderEndTurn(sf::RenderTarget& target) {
 }
 
 void DuelState::renderLogButton(sf::RenderTarget& target) {
+    if (!Settings::get().showBattleLog) return;
     const sf::FloatRect box = Layout::logButton();
     const bool hot = box.contains(m_mousePos) || m_logOpen;
 
@@ -5389,7 +5487,7 @@ void DuelState::renderLogButton(sf::RenderTarget& target) {
 }
 
 void DuelState::renderLogPanel(sf::RenderTarget& target) {
-    if (!m_logOpen) return;
+    if (!m_logOpen || !Settings::get().showBattleLog) return;
 
     // Stops at 526 so it never covers the player strip that starts at 552.
     const sf::FloatRect panel(84.0f, 132.0f, 330.0f, 394.0f);

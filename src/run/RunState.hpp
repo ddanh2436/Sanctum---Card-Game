@@ -42,6 +42,19 @@ public:
     const Encounter& currentEncounter() const;
     static const std::vector<Encounter>& path();
 
+    /**
+     * The reactor an encounter's commander actually starts on, after the
+     * difficulty setting.
+     *
+     * This lives here rather than in the screen that draws it: the rule has to
+     * be identical for the duel, for the map's preview of the next fight, and
+     * for the balance simulation. It was in the UI layer first, which meant the
+     * simulation measured a difficulty nobody plays on.
+     */
+    static int reactorFor(const Encounter& encounter);
+    /// The player's reactor ceiling for this run, after difficulty.
+    static int playerReactorCap();
+
     // --- the player's cores ---
     MechRole getPrimaryRole() const { return m_config.primaryRole; }
     MechRole getSecondaryRole() const { return m_config.secondaryRole; }

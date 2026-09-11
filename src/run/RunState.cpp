@@ -1,6 +1,9 @@
 #include "run/RunState.hpp"
 
 #include "run/DeckStore.hpp"
+#include "utils/Settings.hpp"
+
+#include <cmath>
 #include "battle/Commander.hpp"
 #include "utils/DataLoader.hpp"
 #include "utils/Rng.hpp"
@@ -84,11 +87,21 @@ const std::vector<Encounter>& RunState::path() {
 
 void RunState::startNewRun(MechRole primary, MechRole secondary) {
     m_encounter = 0;
-    m_commanderHp = Commander::kStartingHp;
+    m_commanderHp = playerReactorCap();
     // The player's own deck for this pair when they have built one, otherwise
     // the generated deck. configurationFor() falls back on its own if a saved
     // deck no longer passes the rules.
     m_config = DeckStore::configurationFor(primary, secondary);
+}
+
+int RunState::playerReactorCap() {
+    return std::max(10, Commander::kStartingHp + Settings::get().playerReactorBonus());
+}
+
+int RunState::reactorFor(const Encounter& encounter) {
+    // Floored so Recruit cannot make a fight trivial.
+    return std::max(12, static_cast<int>(
+        std::lround(encounter.commanderHp * Settings::get().enemyReactorScale())));
 }
 
 const Encounter& RunState::currentEncounter() const {
@@ -181,6 +194,10 @@ void RunState::purgeCardAt(size_t index) {
 
 void RunState::winEncounter(const CardData& chosen) {
     if (!chosen.id.empty()) m_config.cards.push_back(chosen);
-    m_commanderHp = std::min(Commander::kStartingHp, m_commanderHp + kHealBetweenFights);
+    // Difficulty tunes the repair between fights as well as the enemy reactor:
+    // on Recruit the back half of the campaign is survivable, on Warlord the
+    // damage you take in the front half still costs you later.
+    const int repair = kHealBetweenFights + Settings::get().bonusRepair();
+    m_commanderHp = std::clamp(m_commanderHp + repair, 1, playerReactorCap());
     ++m_encounter;
 }
