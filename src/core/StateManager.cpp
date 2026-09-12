@@ -1397,7 +1397,13 @@ private:
      * never want still turns up on a share of your draws. Being allowed to
      * SCRAP one is what turns a pile into a deck, so both happen here, in order.
      */
-    enum class Phase { Offer, Purge };
+    /**
+     * Three decisions, not two. Offer and Purge change what is IN the deck;
+     * Augment changes how the deck plays, and only turns up after fights 2 and
+     * 4 - every fight would make augments the progression and the cards an
+     * afterthought.
+     */
+    enum class Phase { Offer, Purge, Augment };
 
     StateManager& m_stateManager;
     const sf::Font& m_font;
@@ -1405,6 +1411,7 @@ private:
     Phase m_phase = Phase::Offer;
     int m_hovered = -1;
     bool m_skipHovered = false;
+    std::vector<Augments::Id> m_augmentOffers;
     sf::Text m_heading;
     sf::Text m_subheading;
 
@@ -1416,7 +1423,13 @@ public:
 
 private:
     void enterPurgePhase();
+    /// Returns false when this fight is not one of the augment fights.
+    bool enterAugmentPhase();
     void leaveToMap();
+    sf::FloatRect augmentPanel(int index) const {
+        return { 128.0f + index * 348.0f, 210.0f, 320.0f, 250.0f };
+    }
+    void renderAugments(sf::RenderTarget& target) const;
     /// The card under this point, or -1. One routine, so hover and click can
     /// never disagree about what is being pointed at.
     int pickAt(sf::Vector2f point) const;
@@ -3964,6 +3977,7 @@ DuelState::DuelState(StateManager& sm, const sf::Font& font)
     you.primary = g_run.getPrimaryRole();
     you.secondary = g_run.getSecondaryRole();
     you.hp = g_run.getCommanderHp();
+    you.augments = g_run.getAugments();
     you.name = roleTitle(you.primary);
 
     DuelistSetup foe;
@@ -5946,7 +5960,68 @@ void RewardState::enterPurgePhase() {
     m_subheading.setPosition(640.0f, 164.0f);
 }
 
+bool RewardState::enterAugmentPhase() {
+    if (!g_run.augmentOfferDue()) return false;
+    m_augmentOffers = Augments::roll(g_run.getAugments());
+    if (m_augmentOffers.empty()) return false;
+
+    m_phase = Phase::Augment;
+    m_hovered = -1;
+    m_heading.setString("CORE AUGMENT");
+    TextUtils::centerBoth(m_heading);
+    m_heading.setPosition(640.0f, 96.0f);
+    m_subheading.setString("One permanent upgrade for the rest of the run");
+    TextUtils::centerBoth(m_subheading);
+    m_subheading.setPosition(640.0f, 140.0f);
+    return true;
+}
+
+void RewardState::renderAugments(sf::RenderTarget& target) const {
+    for (int i = 0; i < static_cast<int>(m_augmentOffers.size()); ++i) {
+        const Augments::Augment& augment = Augments::get(m_augmentOffers[static_cast<size_t>(i)]);
+        const sf::FloatRect box = augmentPanel(i);
+        const bool hot = i == m_hovered;
+
+        drawPanel(target, box,
+                  hot ? sf::Color(30, 34, 44, 246) : sf::Color(16, 18, 24, 238),
+                  hot ? sf::Color(236, 190, 74) : sf::Color(88, 94, 106, 200));
+
+        // A hexagonal core, drawn rather than an icon file: six augments would
+        // otherwise be six PNGs that do not exist yet.
+        sf::CircleShape core(34.0f, 6);
+        core.setOrigin(34.0f, 34.0f);
+        core.setPosition(box.left + box.width / 2.0f, box.top + 62.0f);
+        core.setFillColor(hot ? sf::Color(64, 52, 22, 240) : sf::Color(28, 30, 38, 235));
+        core.setOutlineThickness(2.0f);
+        core.setOutlineColor(hot ? sf::Color(244, 206, 120) : sf::Color(120, 126, 138));
+        target.draw(core);
+
+        sf::Text name;
+        name.setFont(m_font);
+        name.setString(augment.name);
+        name.setCharacterSize(17);
+        name.setStyle(sf::Text::Bold);
+        name.setFillColor(hot ? sf::Color(246, 226, 190) : sf::Color(216, 210, 200));
+        TextUtils::centerBoth(name);
+        name.setPosition(box.left + box.width / 2.0f, box.top + 122.0f);
+        target.draw(name);
+
+        sf::Text body;
+        body.setFont(Fonts::ui());
+        body.setString(TextUtils::wrap(augment.text, Fonts::ui(), 13, box.width - 36.0f));
+        body.setCharacterSize(13);
+        body.setLineSpacing(1.35f);
+        body.setFillColor(sf::Color(178, 184, 194));
+        TextUtils::centerHorizontally(body);
+        body.setPosition(box.left + box.width / 2.0f, box.top + 152.0f);
+        target.draw(body);
+    }
+}
+
 void RewardState::leaveToMap() {
+    // The augment screen sits between the scrap bay and the map, and only on
+    // the fights that offer one.
+    if (m_phase != Phase::Augment && enterAugmentPhase()) return;
     m_stateManager.changeState(std::make_unique<MapState>(m_stateManager, m_font));
 }
 
@@ -5976,7 +6051,14 @@ int RewardState::pickAt(sf::Vector2f point) const {
 void RewardState::handleEvent(const sf::Event& event, const sf::RenderWindow& window) {
     if (event.type == sf::Event::MouseMoved) {
         const sf::Vector2f p = window.mapPixelToCoords({ event.mouseMove.x, event.mouseMove.y });
-        m_hovered = pickAt(p);
+        if (m_phase == Phase::Augment) {
+            m_hovered = -1;
+            for (int i = 0; i < static_cast<int>(m_augmentOffers.size()); ++i) {
+                if (augmentPanel(i).contains(p)) m_hovered = i;
+            }
+        } else {
+            m_hovered = pickAt(p);
+        }
         m_skipHovered = (m_phase == Phase::Purge) && skipButton().contains(p);
         return;
     }
@@ -6013,6 +6095,16 @@ void RewardState::handleEvent(const sf::Event& event, const sf::RenderWindow& wi
         return;
     }
 
+    if (m_phase == Phase::Augment) {
+        for (int i = 0; i < static_cast<int>(m_augmentOffers.size()); ++i) {
+            if (!augmentPanel(i).contains(p)) continue;
+            g_run.takeAugment(m_augmentOffers[static_cast<size_t>(i)]);
+            m_stateManager.changeState(std::make_unique<MapState>(m_stateManager, m_font));
+            return;
+        }
+        return;
+    }
+
     if (skipButton().contains(p)) { leaveToMap(); return; }
 
     const int picked = pickAt(p);
@@ -6028,6 +6120,13 @@ void RewardState::render(sf::RenderTarget& target) {
 
     target.draw(m_heading);
     target.draw(m_subheading);
+
+    if (m_phase == Phase::Augment) {
+        renderAugments(target);
+        drawLabel(target, "an augment is permanent - it applies to every fight that follows",
+                  { 640.0f - 230.0f, 500.0f }, 12, sf::Color(128, 134, 146), 1.2f);
+        return;
+    }
 
     if (m_phase == Phase::Offer) {
         for (int i = 0; i < static_cast<int>(m_offers.size()); ++i) {

@@ -48,6 +48,7 @@ inline constexpr Mask Aerial   = 1u << 7; // thrusters over the line into the su
 inline constexpr Mask Splash   = 1u << 8; // also hits the units flanking the target
 inline constexpr Mask Thruster = 1u << 9; // advancing costs no energy
 inline constexpr Mask Intercept = 1u << 10; // shoots down Aerial crossing its lanes
+inline constexpr Mask Entrench  = 1u << 11; // dug in: armour, harder to shift, hits harder
 }
 
 /// When an ability fires.

@@ -45,6 +45,9 @@ struct Unit {
     /// Fired from the support row this round, so enemy melee can reach it
     /// until its next upkeep. Artillery gives away its position.
     bool exposed = false;
+    /// Entrench: cleared at upkeep, set the moment the frame advances. A frame
+    /// that has broken cover is no longer dug in.
+    bool advancedThisTurn = false;
 
     bool exhausted = true;        // deployment lag
     int attacksThisTurn = 0;

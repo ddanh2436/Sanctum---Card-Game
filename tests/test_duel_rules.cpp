@@ -4,6 +4,7 @@
 #include "battle/DuelEngine.hpp"
 #include "run/DeckBuilder.hpp"
 #include "run/DeckStore.hpp"
+#include "run/Augments.hpp"
 #include "utils/DataLoader.hpp"
 #include "utils/Rng.hpp"
 #include <cstdio>
@@ -1107,6 +1108,136 @@ void test_the_doctrine_counters_each_do_their_own_thing() {
     std::cout << "[PASS] test_the_doctrine_counters_each_do_their_own_thing\n";
 }
 
+/// Entrench pays a frame for staying put, and stops paying the moment it moves.
+void test_entrench_rewards_holding_position() {
+    {
+        // Dug in from its own upkeep: plating, and a ranged frame hits harder.
+        DuelEngine duel;
+        CardData gun = unitCard("gun", 1, 2, 6, Keyword::Ranged | Keyword::Entrench);
+        CardData target = unitCard("target", 1, 1, 9);
+        startNeutral(duel, gun, target);
+
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        duel.endTurn();
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        duel.endTurn();
+
+        const Unit* dug = duel.board().units(Side::Player).front();
+        CHECK_MSG(dug->armour == 1, "an entrenched frame woke up without its plating");
+
+        const int gunId = dug->instanceId;
+        const int foeId = duel.board().units(Side::Opponent).front()->instanceId;
+        CHECK(duel.declareAttack(Side::Player, gunId, foeId) == ActionResult::Ok);
+        // 2 attack plus the entrenched bonus.
+        CHECK_MSG(duel.board().findById(foeId)->damage == 3,
+                  "the dug-in ranged bonus did not land");
+    }
+    {
+        // Advancing breaks cover: the plating goes with it.
+        DuelEngine duel;
+        CardData gun = unitCard("gun", 1, 2, 6, Keyword::Entrench);
+        CardData filler2 = unitCard("filler2", 1, 1, 1);
+        startNeutral(duel, gun, filler2);
+
+        reachEnergy(duel, Side::Player, 4);
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Support, 0) == ActionResult::Ok);
+        duel.endTurn();
+        duel.endTurn();
+
+        const int gunId = duel.board().unitsIn(Side::Player, BoardLine::Support).front()->instanceId;
+        CHECK_MSG(duel.board().findById(gunId)->armour == 1, "not dug in before moving");
+        CHECK(duel.advanceUnit(Side::Player, gunId) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(gunId)->armour == 0,
+                  "it kept its plating after breaking cover");
+    }
+    {
+        // A recall cannot shift it.
+        DuelEngine duel;
+        CardData recall = trapCard("recall", TrapTrigger::OnEnemyAdvance,
+                                   TrapKind::RecallTargetToHand);
+        CardData digger = unitCard("digger", 1, 2, 6, Keyword::Entrench);
+        startNeutral(duel, recall, digger);
+
+        CHECK(duel.setTrap(Side::Player, 0) == ActionResult::Ok);
+        duel.endTurn();
+        reachEnergy(duel, Side::Opponent, 4);
+        CHECK(duel.summonFromHand(Side::Opponent, 0, BoardLine::Support, 0) == ActionResult::Ok);
+        duel.endTurn();
+        duel.endTurn();
+
+        const int digId = duel.board().unitsIn(Side::Opponent, BoardLine::Support).front()->instanceId;
+        CHECK(duel.advanceUnit(Side::Opponent, digId) == ActionResult::Ok);
+        CHECK_MSG(duel.board().findById(digId) != nullptr,
+                  "an entrenched frame was pulled off the board");
+    }
+    std::cout << "[PASS] test_entrench_rewards_holding_position\n";
+}
+
+/// Core Augments have to actually change a number, or they are six lines of
+/// flavour text. One measurable claim each.
+void test_core_augments_change_the_duel() {
+    auto setup = [](DuelEngine& duel, const CardData& mine, const CardData& theirs,
+                    Augments::Id id) {
+        DuelistSetup you = seat(filler(40, mine), kNeutral, MechRole::Siege);
+        DuelistSetup foe = seat(filler(40, theirs), kNeutral2, MechRole::Siege);
+        if (id != Augments::Id::None) you.augments.push_back(id);
+        duel.startDuel(you, foe);
+    };
+
+    // Capacitor Overdrive: the FIRST deploy each turn is a energy cheaper, the
+    // second is not.
+    {
+        DuelEngine duel;
+        CardData body = unitCard("body", 3, 1, 4);
+        setup(duel, body, body, Augments::Id::CapacitorOverdrive);
+        reachEnergy(duel, Side::Player, 6);
+        const int before = duel.commander(Side::Player).getMana();
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        const int afterFirst = duel.commander(Side::Player).getMana();
+        CHECK_MSG(before - afterFirst == 2, "the first deploy was not discounted");
+        CHECK(duel.summonFromHand(Side::Player, 0, BoardLine::Frontline, 1) == ActionResult::Ok);
+        CHECK_MSG(afterFirst - duel.commander(Side::Player).getMana() == 3,
+                  "the second deploy was discounted too");
+    }
+
+    // Hydraulic Stabilizers: a Guard frame stands one point longer.
+    {
+        DuelEngine plain, buffed;
+        CardData guard = unitCard("guard", 1, 2, 5, Keyword::Taunt);
+        setup(plain, guard, guard, Augments::Id::None);
+        setup(buffed, guard, guard, Augments::Id::HydraulicStabilizers);
+        for (DuelEngine* duel : { &plain, &buffed }) {
+            CHECK(duel->summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+        }
+        const int bare = plain.board().units(Side::Player).front()->maxHealth();
+        const int lifted = buffed.board().units(Side::Player).front()->maxHealth();
+        CHECK_MSG(lifted == bare + 1, "stabilizers did not reinforce the Guard");
+    }
+
+    // Reinforced Plating: shelling the frontline lands for one less.
+    {
+        DuelEngine plain, buffed;
+        CardData target = unitCard("target", 1, 1, 9);
+        CardData gun = unitCard("gun", 1, 4, 4, Keyword::Ranged | Keyword::Rush);
+        int damage[2] = { 0, 0 };
+        DuelEngine* both[2] = { &plain, &buffed };
+        const Augments::Id ids[2] = { Augments::Id::None, Augments::Id::ReinforcedPlating };
+        for (int i = 0; i < 2; ++i) {
+            setup(*both[i], target, gun, ids[i]);
+            CHECK(both[i]->summonFromHand(Side::Player, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+            both[i]->endTurn();
+            CHECK(both[i]->summonFromHand(Side::Opponent, 0, BoardLine::Frontline, 0) == ActionResult::Ok);
+            const int gunId = both[i]->board().units(Side::Opponent).front()->instanceId;
+            const int tgtId = both[i]->board().units(Side::Player).front()->instanceId;
+            CHECK(both[i]->declareAttack(Side::Opponent, gunId, tgtId) == ActionResult::Ok);
+            damage[i] = both[i]->board().findById(tgtId)->damage;
+        }
+        CHECK_MSG(damage[1] == damage[0] - 1, "plating did not blunt the shelling");
+    }
+
+    std::cout << "[PASS] test_core_augments_change_the_duel\n";
+}
+
 void test_aura_applies_and_expires() {
     DuelEngine duel;
     CardData grunt = unitCard("grunt", 1, 1, 1);
@@ -1320,6 +1451,8 @@ int main() {
     test_grid_snare_weakens_an_advancing_frame();
     test_detonation_hits_the_killer();
     test_the_doctrine_counters_each_do_their_own_thing();
+    test_entrench_rewards_holding_position();
+    test_core_augments_change_the_duel();
     test_aura_applies_and_expires();
     test_duel_ends_when_a_reactor_falls();
     test_deck_rules_reject_illegal_configurations();

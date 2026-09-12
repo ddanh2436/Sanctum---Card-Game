@@ -1,6 +1,7 @@
 #pragma once
 
 #include "battle/CardData.hpp"
+#include "run/Augments.hpp"
 #include "run/DeckBuilder.hpp"
 #include <string>
 #include <vector>
@@ -55,6 +56,14 @@ public:
     /// The player's reactor ceiling for this run, after difficulty.
     static int playerReactorCap();
 
+    // --- Core Augments ---
+    /// True when the fight just won is one the augment screen follows. After
+    /// fights 2 and 4 only: every fight would make augments the progression and
+    /// the cards an afterthought.
+    bool augmentOfferDue() const { return m_encounter == 2 || m_encounter == 4; }
+    const std::vector<Augments::Id>& getAugments() const { return m_augments; }
+    void takeAugment(Augments::Id id) { if (id != Augments::Id::None) m_augments.push_back(id); }
+
     // --- the player's cores ---
     MechRole getPrimaryRole() const { return m_config.primaryRole; }
     MechRole getSecondaryRole() const { return m_config.secondaryRole; }
@@ -98,5 +107,6 @@ public:
 private:
     int m_encounter = 0;
     int m_commanderHp = 30;
+    std::vector<Augments::Id> m_augments;
     DeckConfiguration m_config;
 };

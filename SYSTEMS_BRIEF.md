@@ -352,6 +352,7 @@ Pick two; the primary grants the passive.
 | **OVERKILL** | Damage beyond what it takes to scrap the defender carries into the enemy reactor. |
 | **SPLASH** | The attack spills half its damage onto the frames flanking the target. |
 | **EMP** | Anything it hits is shorted out: cannot act next turn, and burns 1 health each upkeep until destroyed. |
+| **ENTRENCH** | Dug in from its own upkeep: +1 plating, +1 damage on its ranged attacks, and it cannot be pulled off the board. Advancing gives all of it up for the rest of the turn — the bonus is what you spend to move, not something you spend a turn earning. |
 | **INTERCEPT** | Standing in the frontline, it covers its own lane and one either side. A flier attacking into a covered lane is shot for the interceptor's full attack **before** its own strike lands, and a flier shot down never lands that strike at all. |
 
 ### Why Intercept exists
@@ -374,12 +375,12 @@ made Intercept read as a trap laid for the AI rather than as a rule of the game.
 
 ---
 
-## 10. Card catalogue — 93 cards, 239 copies
+## 10. Card catalogue — 95 cards, 243 copies
 
 Behaviour names are the C++ enum values. Each one is a distinct hand-written behaviour in the
 rules engine, not a generic effect.
 
-### Vanguard — 14 cards, 35 copies
+### Vanguard — 15 cards, 37 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -397,6 +398,7 @@ rules engine, not a generic effect.
 | `vg_lastline` | Last Line Detonation | Counter | 1 | — | 2 | — | On own Titan destroyed: DetonateForTitanAttack |
 | `vg_skyguard` | Skyguard Flak Drone | Unit T1 | 2 | 1/4 | 2 | taunt, intercept | — |
 | `vg_bastion_mk4` | Bastion MK-IV Sentinel | Unit T2 | 4 | 2/7 | 2 | taunt | Upkeep: RepairSelfEachTurn 2 |
+| `vg_dugin` | Trenchline Bastion | Unit T2 | 4 | 2/7 | 2 | taunt, entrench | — |
 
 ### Arclight — 16 cards, 40 copies
 
@@ -461,7 +463,7 @@ rules engine, not a generic effect.
 | `dg_veer` | Veer Off | Counter | 1 | — | 3 | — | On enemy advance: WeakenAdvancingUnit 1 / 1 |
 | `dg_strafe_wing` | Ashfall Strafe Wing | Unit T2 | 5 | 3/4 | 2 | aerial | Deploy: DamageEnemyFrontline 2 |
 
-### Siege — 17 cards, 42 copies
+### Siege — 18 cards, 44 copies
 
 | Id | Name | Type | Cost | ATK/HP | × | Keywords | Behaviour |
 |---|---|---|---|---|---|---|---|
@@ -482,6 +484,7 @@ rules engine, not a generic effect.
 | `sg_tripwire` | Perimeter Minefield | Counter | 1 | — | 2 | — | OnEnemyAdvance → MinefieldSplash |
 | `sg_minefield` | Pre-Ranged Minefield | Counter | 1 | — | 2 | — | OnEnemyAdvance → WeakenAdvancingUnit |
 | `sg_counterfire` | Counter-Battery Fire | Counter | 2 | — | 2 | — | OnEnemyAttackReactor → BlockAndCrushWeak |
+| `sg_redoubt` | Redoubt Gun Nest | Unit T1 | 3 | 2/5 | 2 | ranged, entrench | — |
 
 ### Overseer — 14 cards, 38 copies
 
@@ -568,6 +571,40 @@ At 40 cards a primary core must supply 17 units, 7 spells and 3 counters.
 Dragoon is no longer the blocker. **Three doctrines still carry no
 counter-protocols at all** — the builder falls back to units, which works, but it
 means half the roster cannot use the counter system on its own.
+
+---
+
+### Core Augments — the other kind of progression
+
+A five-fight run changed in exactly two ways: four cards added, four removed. That is a lot of
+decisions about the *contents* of a deck and none at all about how it plays. An augment changes a
+rule for the rest of the run, so the same twenty-four cards behave differently.
+
+They are offered **after fights 2 and 4 only**, between the scrap bay and the map. Every fight
+would make augments the progression and the cards an afterthought.
+
+| Augment | Effect | Where it lives in the engine |
+|---|---|---|
+| Hydraulic Stabilizers | Guard frames gain +1 max health and hit back 1 harder | `recomputeAuras` and the retaliation branch |
+| Capacitor Overdrive | The first frame or counter you play each turn costs 1 less | `augmentedCost`, called from the deploy and arm paths |
+| Thermal Recycler | Every counter that fires banks 1 energy | `fireTraps`, beside the Overseer payoff |
+| Reinforced Plating | Your frontline takes 1 less from ranged and aerial | the frame-versus-frame damage branch |
+| Salvage Protocol | The first frame you lose each turn draws a card | `resolveDeaths` |
+| Overclocked Core | Energy cap rises 2 higher for the rest of the run | `Commander::setManaCapBonus`, applied once at `startDuel` |
+
+Each one is read at a **single named place** rather than through a general effect system. Six
+augments with six call sites is far less to get wrong than a scripting layer, and every one of
+them is measurable — three are asserted directly in `SanctumRulesTests`.
+
+Two details that are deliberate rather than incidental:
+
+- **Capacitor Overdrive discounts the FIRST card each turn**, not every card. That makes it a
+  tempo augment: worth most on the turn you commit one expensive frame, worth nothing on the turn
+  you dump three cheap ones.
+- **Salvage Protocol draws once a turn, not once a frame.** Otherwise a board wipe refills the
+  hand that just lost the board.
+- **Thermal Recycler banks rather than grants.** A counter fires on the *enemy's* turn, so energy
+  handed over immediately would land in a pool that is about to be cleared.
 
 ---
 

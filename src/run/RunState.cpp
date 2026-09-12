@@ -88,6 +88,7 @@ const std::vector<Encounter>& RunState::path() {
 void RunState::startNewRun(MechRole primary, MechRole secondary) {
     m_encounter = 0;
     m_commanderHp = playerReactorCap();
+    m_augments.clear();
     // The player's own deck for this pair when they have built one, otherwise
     // the generated deck. configurationFor() falls back on its own if a saved
     // deck no longer passes the rules.

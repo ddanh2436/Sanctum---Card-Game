@@ -2,6 +2,7 @@
 
 #include "battle/Board.hpp"
 #include "battle/Commander.hpp"
+#include "run/Augments.hpp"
 #include <array>
 #include <string>
 #include <vector>
@@ -72,6 +73,8 @@ struct DuelistSetup {
     MechRole secondary = MechRole::Siege;
     int hp = Commander::kStartingHp;
     std::string name = "Commander";
+    /// Core Augments carried into this fight. Only the player ever has any.
+    std::vector<Augments::Id> augments;
 };
 
 class DuelEngine {
@@ -89,6 +92,16 @@ public:
     static constexpr int kInterceptReach = 1;
     /// A blinded frame cannot connect with a target this healthy.
     static constexpr int kBlindMissThreshold = 4;
+    /// Entrench: what staying put is worth.
+    static constexpr int kEntrenchArmour = 1;
+    static constexpr int kEntrenchRangedBonus = 1;
+    /// Core Augment magnitudes, in one place.
+    static constexpr int kOverclockBonus = 2;
+    static constexpr int kCapacitorDiscount = 1;
+    static constexpr int kRecyclerRefund = 1;
+    static constexpr int kPlatingReduction = 1;
+    static constexpr int kStabiliserHealth = 1;
+    static constexpr int kStabiliserBite = 1;
     static constexpr int kOverchargePerStrike = 1;
     static constexpr int kOverchargeStrikeBonus = 2;
 
@@ -130,6 +143,12 @@ public:
     Unit* interceptorFor(Side defender, int lane);
     /// Read-only view of the same lookup, for the AI's attack scoring.
     const Unit* interceptorOver(Side defender, int lane) const;
+    /// True while an Entrench frame is still in the position it woke up in.
+    static bool isDugIn(const Unit& unit);
+    /// True when this side carries the augment.
+    bool hasAugment(Side side, Augments::Id id) const;
+    /// Applies Capacitor Overdrive to the first thing played each turn.
+    int augmentedCost(Side side, int cost);
     /// Energy this side pays to advance right now (Thruster / Dragoon make it free).
     int advanceCost(int unitId) const;
 
@@ -165,6 +184,11 @@ private:
     // Per-turn passive budgets, reset at each upkeep.
     std::array<bool, 2> m_freeAdvanceUsed { false, false };   // Dragoon
     std::array<bool, 2> m_salvageUsed { false, false };       // Valkyrie
+    std::array<std::vector<Augments::Id>, 2> m_augments;
+    /// Capacitor Overdrive: cleared at upkeep, set once the discount is spent.
+    std::array<bool, 2> m_discountUsed { false, false };
+    /// Salvage Protocol: one bonus draw per turn, not one per frame lost.
+    std::array<bool, 2> m_salvageDrawUsed { false, false };
     std::array<int, 2> m_unitsLostThisTurn { 0, 0 };          // drives Scrap Protocol
     /// Reactor strain: escalating damage once a salvage line runs dry.
     std::array<int, 2> m_fatigue { 0, 0 };

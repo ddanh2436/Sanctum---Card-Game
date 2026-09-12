@@ -25,6 +25,13 @@ const char* toString(ActionResult result) {
 // =============================================================================
 
 void DuelEngine::startDuel(DuelistSetup player, DuelistSetup opponent) {
+    m_augments[index(Side::Player)] = player.augments;
+    m_augments[index(Side::Opponent)] = opponent.augments;
+    for (Side side : { Side::Player, Side::Opponent }) {
+        if (hasAugment(side, Augments::Id::OverclockedCore)) {
+            m_commanders[index(side)].setManaCapBonus(kOverclockBonus);
+        }
+    }
     m_board.clear();
     m_events.clear();
     m_over = false;
@@ -89,10 +96,17 @@ void DuelEngine::beginTurn(Side side) {
     }
 
     // Upkeep: plating lapses, frames spin up, stuns and EMP burn tick.
+    m_discountUsed[index(side)] = false;
+    m_salvageDrawUsed[index(side)] = false;
+
     for (Unit* unit : m_board.units(side)) {
         unit->armour = 0;
         unit->attacksThisTurn = 0;
         unit->exposed = false;
+        unit->advancedThisTurn = false;
+        // Dug in by default: the armour is what you give up by advancing, not
+        // something you have to spend a turn earning.
+        if (unit->hasKeyword(Keyword::Entrench)) unit->armour += kEntrenchArmour;
         if (unit->stunTurns > 0) {
             --unit->stunTurns;
         } else {
@@ -233,7 +247,7 @@ ActionResult DuelEngine::summonFromHand(Side side, size_t handIndex, BoardLine l
         if (!where.valid() || where.side != side) return ActionResult::InvalidTribute;
     }
 
-    const int cost = summonCost(card, tributes);
+    const int cost = augmentedCost(side, summonCost(card, tributes));
     if (!me.canAfford(cost)) return ActionResult::NotEnoughMana;
     if (card.overchargeCost > me.getOvercharge()) return ActionResult::NotEnoughMana;
 
@@ -411,7 +425,7 @@ ActionResult DuelEngine::setTrap(Side side, size_t handIndex) {
     if (card.category != CardCategory::Trap) return ActionResult::NoSuchCard;
     if (m_board.trapZoneFull(side)) return ActionResult::TrapZoneFull;
 
-    const int cost = trapCost(side);
+    const int cost = augmentedCost(side, trapCost(side));
     if (!me.canAfford(cost)) return ActionResult::NotEnoughMana;
 
     me.spendMana(cost);
@@ -482,6 +496,11 @@ ActionResult DuelEngine::advanceUnit(Side side, int unitId) {
     }
 
     std::unique_ptr<Unit> moving = m_board.take(side, BoardLine::Support, where.slot);
+    if (moving && moving->hasKeyword(Keyword::Entrench)) {
+        // Breaking cover costs the dug-in bonuses for the rest of the turn.
+        moving->advancedThisTurn = true;
+        moving->armour = std::max(0, moving->armour - kEntrenchArmour);
+    }
     m_board.place(side, BoardLine::Frontline, slot, std::move(moving));
 
     emit(DuelEvent::Type::UnitAdvanced, side,
@@ -515,6 +534,26 @@ const Unit* DuelEngine::interceptorOver(Side defender, int lane) const {
         if (unit && unit->isAlive() && unit->hasKeyword(Keyword::Intercept)) return unit;
     }
     return nullptr;
+}
+
+int DuelEngine::augmentedCost(Side side, int cost) {
+    // Capacitor Overdrive takes its discount off the FIRST thing you play each
+    // turn. That makes it a tempo augment rather than a flat rebate: worth most
+    // on the turn you commit one expensive frame, worth nothing on the turn you
+    // dump three cheap ones.
+    if (cost <= 0 || m_discountUsed[index(side)]) return cost;
+    if (!hasAugment(side, Augments::Id::CapacitorOverdrive)) return cost;
+    m_discountUsed[index(side)] = true;
+    return std::max(0, cost - kCapacitorDiscount);
+}
+
+bool DuelEngine::hasAugment(Side side, Augments::Id id) const {
+    const auto& mine = m_augments[index(side)];
+    return std::find(mine.begin(), mine.end(), id) != mine.end();
+}
+
+bool DuelEngine::isDugIn(const Unit& unit) {
+    return unit.hasKeyword(Keyword::Entrench) && !unit.advancedThisTurn;
 }
 
 Unit* DuelEngine::interceptorFor(Side defender, int lane) {
@@ -756,6 +795,7 @@ ActionResult DuelEngine::declareAttack(Side side, int attackerId, int targetId) 
         int reactorDamage = attacker->attack() + overchargeBonus;
         if (attacker->hasKeyword(Keyword::Ranged)) {
             reactorDamage += rangedBonus(side) + attacker->auraRangedBonus;
+            if (isDugIn(*attacker)) reactorDamage += kEntrenchRangedBonus;
             // A clear corridor to the core is worth double. Shooting through a
             // contested lane still lands, but only for half.
             const UnitLocation from = m_board.locate(attackerId);
@@ -776,7 +816,10 @@ ActionResult DuelEngine::declareAttack(Side side, int attackerId, int targetId) 
 
     const bool ranged = attacker->hasKeyword(Keyword::Ranged);
     int damage = attacker->attack() + overchargeBonus;
-    if (ranged) damage += rangedBonus(side) + attacker->auraRangedBonus;
+    if (ranged) {
+        damage += rangedBonus(side) + attacker->auraRangedBonus;
+        if (isDugIn(*attacker)) damage += kEntrenchRangedBonus;
+    }
 
     // Blinded: swings short, and cannot find a target that is still healthy.
     if (attacker->blindTurns > 0) {
@@ -794,9 +837,21 @@ ActionResult DuelEngine::declareAttack(Side side, int attackerId, int targetId) 
     // Artillery has no melee answer: it never returns fire, attacking or
     // defending. Without this it was strictly better than a melee frame on
     // both sides of every trade.
-    const int retaliation = defender->hasKeyword(Keyword::Ranged) ? 0 : defender->attack();
+    int retaliation = defender->hasKeyword(Keyword::Ranged) ? 0 : defender->attack();
+    if (retaliation > 0 && defender->hasKeyword(Keyword::Taunt)
+        && hasAugment(other(side), Augments::Id::HydraulicStabilizers)) {
+        retaliation += kStabiliserBite;
+    }
     const int defenderId = defender->instanceId;
     const UnitLocation defenderAt = m_board.locate(defenderId);
+
+    // Reinforced Plating: the frontline shrugs off shelling and strafing, but
+    // not a frame that walked up and hit it.
+    if ((ranged || attacker->hasKeyword(Keyword::Aerial))
+        && hasAugment(other(side), Augments::Id::ReinforcedPlating)
+        && defenderAt.valid() && defenderAt.line == BoardLine::Frontline) {
+        damage = std::max(0, damage - kPlatingReduction);
+    }
 
     damageUnit(*defender, damage, attacker->hasKeyword(Keyword::Plasma), attacker, side);
 
@@ -910,6 +965,15 @@ void DuelEngine::resolveDeaths(Unit* killer, Side killerSide) {
             emit(DuelEvent::Type::UnitDestroyed, owner, corpse.data.name + " is destroyed",
                  corpse.instanceId);
             ++m_unitsLostThisTurn[index(owner)];
+
+            // Salvage Protocol: the first frame lost each turn is worth a card.
+            // Once a turn rather than once a frame - otherwise a board wipe
+            // refills the hand that just lost the board.
+            if (hasAugment(owner, Augments::Id::SalvageProtocol)
+                && !m_salvageDrawUsed[index(owner)]) {
+                m_salvageDrawUsed[index(owner)] = true;
+                drawFor(owner, 1, "Salvage protocol recovers a card");
+            }
 
             // Valkyrie's Nanite Reclamation: the first frame lost each turn is
             // rebuilt into the deck instead of being written off as scrap.
@@ -1194,6 +1258,15 @@ void DuelEngine::recomputeAuras() {
     for (Side side : { Side::Player, Side::Opponent }) {
         const auto allies = m_board.units(side);
 
+        // Hydraulic Stabilizers. Rebuilt here with the rest of the auras so it
+        // cannot compound across turns, and so a Guard that loses the keyword
+        // loses the health with it.
+        if (hasAugment(side, Augments::Id::HydraulicStabilizers)) {
+            for (Unit* ally : allies) {
+                if (ally->hasKeyword(Keyword::Taunt)) ally->auraHealth += kStabiliserHealth;
+            }
+        }
+
         for (Unit* source : allies) {
             for (const Ability& ability : source->data.abilities) {
                 if (ability.trigger != AbilityTrigger::Aura) continue;
@@ -1257,6 +1330,11 @@ bool DuelEngine::fireTraps(Side defender, TrapTrigger trigger, Unit* actor, int*
         seizeEnemyUnit(defender);
         // Cipher Tribunal doctrine: every counter that resolves feeds the core.
         applyTribunalPayoff(defender);
+        // Thermal Recycler pays the same window, for any doctrine.
+        if (hasAugment(defender, Augments::Id::ThermalRecycler)) {
+            m_commanders[index(defender)].bankMana(kRecyclerRefund);
+            log("Thermal recycler banks " + std::to_string(kRecyclerRefund) + " energy");
+        }
 
         resolveDeaths(nullptr, defender);
         return true;   // one counter per window keeps chains readable
@@ -1304,6 +1382,10 @@ void DuelEngine::resolveTrap(TrapCard& trap, Side owner, Unit* actor, int* outNe
     }
     case TrapKind::RecallTargetToHand: {
         if (outNegated) *outNegated = 1;
+        if (actor && actor->hasKeyword(Keyword::Entrench)) {
+            log(actor->data.name + " is dug in and will not be moved");
+            break;
+        }
         if (actor) {
             const UnitLocation where = m_board.locate(actor->instanceId);
             Commander& ownerCmd = m_commanders[index(owner)];

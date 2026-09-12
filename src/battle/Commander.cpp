@@ -50,9 +50,13 @@ bool Commander::spendMana(int cost) {
 }
 
 void Commander::beginTurnMana() {
-    m_manaCap = std::min(kMaxManaCap, m_manaCap + 1);
+    m_manaCap = std::min(kMaxManaCap + m_manaCapBonus, m_manaCap + 1);
     m_mana = m_manaCap;
     m_tempMana = 0;
+    if (m_bankedMana > 0) {
+        m_tempMana += m_bankedMana;
+        m_bankedMana = 0;
+    }
 }
 
 void Commander::setDeck(std::vector<CardData> deck) {

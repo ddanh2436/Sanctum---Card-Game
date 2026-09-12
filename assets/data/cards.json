@@ -1544,6 +1544,40 @@
    "trapValue": 3,
    "description": "COUNTER - when an enemy flier strikes:\nscrap it at 3 or less health, otherwise ground it.",
    "textureFile": "assets/cards/sg_flakscreen.png"
+  },
+  {
+   "id": "sg_redoubt",
+   "name": "Redoubt Gun Nest",
+   "role": "Siege",
+   "category": "Unit",
+   "tier": 1,
+   "manaCost": 3,
+   "attack": 2,
+   "health": 5,
+   "deckCount": 2,
+   "keywords": [
+    "ranged",
+    "entrench"
+   ],
+   "description": "Ranged. Entrench: dug in for 1 plating\nand 1 extra damage until it moves.",
+   "textureFile": "assets/cards/sg_redoubt.png"
+  },
+  {
+   "id": "vg_dugin",
+   "name": "Trenchline Bastion",
+   "role": "Vanguard",
+   "category": "Unit",
+   "tier": 2,
+   "manaCost": 4,
+   "attack": 2,
+   "health": 7,
+   "deckCount": 2,
+   "keywords": [
+    "taunt",
+    "entrench"
+   ],
+   "description": "Guard: screens the frames beside it.\nEntrench: dug in, and will not be moved.",
+   "textureFile": "assets/cards/vg_dugin.png"
   }
  ]
 }

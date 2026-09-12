@@ -53,6 +53,12 @@ public:
     bool canAfford(int cost) const { return getMana() >= cost; }
     bool spendMana(int cost);
     void addTempMana(int amount) { m_tempMana += amount; }
+    /// Overclocked Core: how far above the normal ceiling this run reaches.
+    void setManaCapBonus(int amount) { m_manaCapBonus = amount; }
+    /// Thermal Recycler: energy handed to the NEXT upkeep. A refund earned on
+    /// the enemy's turn is worthless if it lands in energy that is about to be
+    /// cleared, so it waits.
+    void bankMana(int amount) { m_bankedMana += amount; }
     /// Raise the cap by one (to the ceiling) and refill.
     void beginTurnMana();
 
@@ -97,6 +103,8 @@ private:
     int m_manaCap = 0;
     int m_mana = 0;
     int m_tempMana = 0;
+    int m_manaCapBonus = 0;
+    int m_bankedMana = 0;
     int m_overcharge = 0;
 
     std::vector<CardData> m_deck;
